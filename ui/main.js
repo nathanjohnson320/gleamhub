@@ -1,8 +1,20 @@
 import { Clerk } from "@clerk/clerk-js";
+import hljs from "highlight.js/lib/common";
+import "highlight.js/styles/github-dark.min.css";
 import { marked } from "marked";
 import { main } from "./src/ui.gleam";
 
+globalThis.hljs = hljs;
 globalThis.marked = marked;
+
+marked.setOptions({
+  highlight(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value;
+    }
+    return hljs.highlightAuto(code).value;
+  },
+});
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 

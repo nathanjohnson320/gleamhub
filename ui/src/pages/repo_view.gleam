@@ -12,10 +12,11 @@ import lustre/attribute as attr
 import lustre/effect.{type Effect}
 import lustre/element.{type Element, text, unsafe_raw_html}
 import lustre/element/html.{
-  a, div, h2, option, p, pre, select, span, table, tbody, td, th, thead, tr,
+  a, div, h2, option, p, select, span, table, tbody, td, th, thead, tr,
 }
 import lustre/event
 import lustre_http
+import highlight
 import markdown
 import modem
 import routes.{type ViewMode, Blob, Home, Tree}
@@ -457,13 +458,11 @@ fn blob_view(model: Model) -> Element(Msg) {
               text("Binary file not shown."),
             ])
           False ->
-            pre(
-              [
-                attr.class(
-                  "max-h-[70vh] overflow-auto rounded-lg bg-slate-900 p-4 font-mono text-xs text-slate-100",
-                ),
-              ],
-              [text(blob.content)],
+            unsafe_raw_html(
+              "",
+              "div",
+              [attr.class("repo-blob-panel max-h-[70vh] overflow-auto rounded-lg")],
+              highlight.to_html(blob.content, model.path),
             )
         },
       ])

@@ -87,6 +87,23 @@
   @apply bg-transparent p-0 text-inherit;
 }
 
+.markdown-body pre code.hljs {
+  @apply block bg-transparent p-0;
+}
+
+/* Blob file viewer (highlight.js github-dark theme) */
+.repo-blob-panel {
+  @apply bg-slate-900;
+}
+
+.repo-blob-pre {
+  @apply m-0 p-4 font-mono text-xs leading-relaxed;
+}
+
+.repo-blob-pre code.hljs {
+  @apply block bg-transparent p-0;
+}
+
 .markdown-body a {
   @apply text-gh-accent hover:underline;
 }
