@@ -3,5 +3,10 @@
 build
 erl_crash.dump
 .env
+.env.test-clerk
 node_modules
+
+# Local Clerk snippets and bare git repos (dev only)
+ui/.env.clerk-snippet
+server/data/
 
