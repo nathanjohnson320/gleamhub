@@ -1,6 +1,7 @@
 import gleam/dynamic/decode
 import gleam/json
 import gleam/option
+import gleam/string
 
 pub type Org {
   Org(id: String, slug: String, name: String, role: option.Option(String))
@@ -193,6 +194,7 @@ pub type MrComment {
   MrComment(
     id: String,
     author_user_id: String,
+    author_name: String,
     body: String,
     file_path: option.Option(String),
     line: option.Option(Int),
@@ -267,9 +269,17 @@ pub fn mr_comments_decoder() -> decode.Decoder(List(MrComment)) {
   decode.success(comments)
 }
 
+pub fn comment_author_label(comment: MrComment) -> String {
+  case string.trim(comment.author_name) {
+    "" -> comment.author_user_id
+    name -> name
+  }
+}
+
 pub fn mr_comment_decoder() -> decode.Decoder(MrComment) {
   use id <- decode.field("id", decode.string)
   use author_user_id <- decode.field("author_user_id", decode.string)
+  use author_name <- decode.field("author_name", decode.string)
   use body <- decode.field("body", decode.string)
   use file_path <- decode.field("file_path", decode.optional(decode.string))
   use line <- decode.field("line", decode.optional(decode.int))
@@ -277,6 +287,7 @@ pub fn mr_comment_decoder() -> decode.Decoder(MrComment) {
   decode.success(MrComment(
     id:,
     author_user_id:,
+    author_name:,
     body:,
     file_path:,
     line:,

@@ -1,3 +1,4 @@
+import app/clerk_api.{type Client}
 import cors_builder as cors
 import gleam/bool
 import gleam/http
@@ -31,7 +32,7 @@ pub type Context {
     git_repos_root: String,
     git_host: String,
     user_id: option.Option(String),
-    email: option.Option(String),
+    clerk: option.Option(Client),
   )
 }
 

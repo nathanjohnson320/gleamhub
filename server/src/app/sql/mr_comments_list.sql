@@ -1,6 +1,7 @@
 SELECT
   c.id::text,
   c.author_user_id,
+  c.author_user_id AS author_name,
   c.body,
   c.file_path,
   c.line,

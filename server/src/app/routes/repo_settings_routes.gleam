@@ -20,10 +20,7 @@ fn user_id(ctx: Context) -> String {
 
 fn ensure_user(ctx: Context) -> Result(Nil, Response) {
   case ctx.user_id {
-    option.Some(id) -> {
-      let _ = database.upsert_user(ctx.repo(), id, option.None, ctx.email)
-      Ok(Nil)
-    }
+    option.Some(_) -> Ok(Nil)
     option.None -> Error(wisp.response(401))
   }
 }

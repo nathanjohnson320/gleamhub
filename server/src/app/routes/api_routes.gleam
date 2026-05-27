@@ -1,3 +1,4 @@
+import app/clerk_api
 import app/database
 import app/git_exec
 import app/json_api
@@ -20,10 +21,7 @@ fn user_id(ctx: Context) -> String {
 
 fn ensure_user(ctx: Context) -> Result(Nil, Response) {
   case ctx.user_id {
-    option.Some(id) -> {
-      let _ = database.upsert_user(ctx.repo(), id, option.None, ctx.email)
-      Ok(Nil)
-    }
+    option.Some(_) -> Ok(Nil)
     option.None -> Error(wisp.response(401))
   }
 }
@@ -44,7 +42,15 @@ pub fn get_me(req: Request, ctx: Context) -> Response {
     Error(r) -> r
     Ok(_) -> {
       let id = user_id(ctx)
-      let user = database.UserRow(id:, display_name: option.None, email: ctx.email)
+      let #(display_name, email) = case ctx.clerk {
+        option.Some(client) ->
+          case clerk_api.profile_for_user(client, id) {
+            Ok(profile) -> profile
+            Error(_) -> #(option.None, option.None)
+          }
+        option.None -> #(option.None, option.None)
+      }
+      let user = database.UserRow(id:, display_name:, email:)
       case database.list_orgs_for_user(ctx.repo(), id) {
         Ok(orgs) ->
           json_api.me_json(user, orgs)

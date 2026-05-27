@@ -138,8 +138,17 @@
   @apply list-none p-0 m-0 font-mono text-xs;
 }
 
-.diff-line {
-  @apply flex flex-wrap items-baseline gap-1 px-2 py-0.5;
+.diff-patch > li {
+  @apply border-b border-slate-100 last:border-b-0;
+}
+
+.diff-row {
+  @apply grid items-center gap-x-2 px-2 py-0.5;
+  grid-template-columns: 2.5rem 1fr 2rem;
+}
+
+.diff-row-has-comments {
+  @apply bg-violet-50/30;
 }
 
 .diff-add {
@@ -150,12 +159,36 @@
   @apply bg-red-50;
 }
 
+.diff-context {
+  @apply bg-white;
+}
+
 .diff-meta {
-  @apply text-gh-muted font-semibold;
+  @apply col-span-3 block px-2 py-0.5 text-gh-muted font-semibold;
+}
+
+.diff-meta.diff-row {
+  display: block;
 }
 
 .diff-lineno {
-  @apply inline-block min-w-[2rem] text-right;
+  @apply text-right text-gh-muted select-none tabular-nums;
+}
+
+.diff-code {
+  @apply min-w-0 overflow-x-auto whitespace-pre font-mono text-sm;
+}
+
+.diff-comment-gutter {
+  @apply flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-sm font-bold text-gh-accent opacity-0 shadow-sm transition hover:bg-gh-accent-soft group-hover:opacity-100;
+}
+
+.diff-inline-thread {
+  @apply ml-10 mr-2 mb-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2;
+}
+
+.diff-inline-composer {
+  @apply ml-10 mr-2 mb-3 rounded-lg border border-violet-200 bg-violet-50/40 p-3;
 }
 
 .markdown-body a {

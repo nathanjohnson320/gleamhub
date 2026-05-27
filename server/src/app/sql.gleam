@@ -313,6 +313,7 @@ pub type MrCommentsInsertRow {
   MrCommentsInsertRow(
     id: String,
     author_user_id: String,
+    author_name: String,
     body: String,
     file_path: Option(String),
     line: Option(Int),
@@ -340,14 +341,16 @@ pub fn mr_comments_insert(
   let decoder = {
     use id <- decode.field(0, decode.string)
     use author_user_id <- decode.field(1, decode.string)
-    use body <- decode.field(2, decode.string)
-    use file_path <- decode.field(3, decode.optional(decode.string))
-    use line <- decode.field(4, decode.optional(decode.int))
-    use created_at <- decode.field(5, decode.string)
-    use updated_at <- decode.field(6, decode.string)
+    use author_name <- decode.field(2, decode.string)
+    use body <- decode.field(3, decode.string)
+    use file_path <- decode.field(4, decode.optional(decode.string))
+    use line <- decode.field(5, decode.optional(decode.int))
+    use created_at <- decode.field(6, decode.string)
+    use updated_at <- decode.field(7, decode.string)
     decode.success(MrCommentsInsertRow(
       id:,
       author_user_id:,
+      author_name:,
       body:,
       file_path:,
       line:,
@@ -371,6 +374,8 @@ WHERE o.slug = $1 AND r.name = $2 AND mr.number = $3
 RETURNING
   id::text,
   author_user_id,
+  (
+  author_user_id AS author_name,
   body,
   file_path,
   line,
@@ -399,6 +404,7 @@ pub type MrCommentsListRow {
   MrCommentsListRow(
     id: String,
     author_user_id: String,
+    author_name: String,
     body: String,
     file_path: Option(String),
     line: Option(Int),
@@ -422,14 +428,16 @@ pub fn mr_comments_list(
   let decoder = {
     use id <- decode.field(0, decode.string)
     use author_user_id <- decode.field(1, decode.string)
-    use body <- decode.field(2, decode.string)
-    use file_path <- decode.field(3, decode.optional(decode.string))
-    use line <- decode.field(4, decode.optional(decode.int))
-    use created_at <- decode.field(5, decode.string)
-    use updated_at <- decode.field(6, decode.string)
+    use author_name <- decode.field(2, decode.string)
+    use body <- decode.field(3, decode.string)
+    use file_path <- decode.field(4, decode.optional(decode.string))
+    use line <- decode.field(5, decode.optional(decode.int))
+    use created_at <- decode.field(6, decode.string)
+    use updated_at <- decode.field(7, decode.string)
     decode.success(MrCommentsListRow(
       id:,
       author_user_id:,
+      author_name:,
       body:,
       file_path:,
       line:,
@@ -441,6 +449,7 @@ pub fn mr_comments_list(
   "SELECT
   c.id::text,
   c.author_user_id,
+  c.author_user_id AS author_name,
   c.body,
   c.file_path,
   c.line,
@@ -1317,21 +1326,27 @@ ORDER BY r.name;
 pub fn users_upsert(
   db: pog.Connection,
   arg_1: String,
-  arg_2: String,
-  arg_3: String,
+  arg_2: option.Option(String),
+  arg_3: option.Option(String),
 ) -> Result(pog.Returned(Nil), pog.QueryError) {
   let decoder = decode.map(decode.dynamic, fn(_) { Nil })
 
   "INSERT INTO users (id, display_name, email)
 VALUES ($1, $2, $3)
 ON CONFLICT (id) DO UPDATE SET
-  display_name = COALESCE(EXCLUDED.display_name, users.display_name),
-  email = COALESCE(EXCLUDED.email, users.email);
+  display_name = COALESCE(
+    NULLIF(TRIM(EXCLUDED.display_name), ''),
+    NULLIF(TRIM(users.display_name), '')
+  ),
+  email = COALESCE(
+    NULLIF(TRIM(EXCLUDED.email), ''),
+    NULLIF(TRIM(users.email), '')
+  );
 "
   |> pog.query
   |> pog.parameter(pog.text(arg_1))
-  |> pog.parameter(pog.text(arg_2))
-  |> pog.parameter(pog.text(arg_3))
+  |> pog.parameter(pog.nullable(pog.text, arg_2))
+  |> pog.parameter(pog.nullable(pog.text, arg_3))
   |> pog.returning(decoder)
   |> pog.execute(db)
 }

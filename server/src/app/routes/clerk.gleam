@@ -7,7 +7,7 @@ import ywt
 
 fn decoder() {
   use id <- decode.field("sub", decode.string)
-  decode.success(#(id))
+  decode.success(id)
 }
 
 /// Middleware for authenticating requests coming from clerk (estonian).
@@ -21,13 +21,9 @@ pub fn middleware(
       let decoded =
         ywt.decode(token, using: decoder(), claims: [], keys: [ctx.clerk_key])
       case decoded {
-        Ok(#(user_id)) -> {
+        Ok(user_id) -> {
           let ctx =
-            web.Context(
-              ..ctx,
-              user_id: option.Some(user_id),
-              email: option.None,
-            )
+            web.Context(..ctx, user_id: option.Some(user_id))
           handle_request(ctx)
         }
         Error(_) -> wisp.response(401)

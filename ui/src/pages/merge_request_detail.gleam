@@ -14,12 +14,15 @@ import lustre/attribute as attr
 import lustre/effect.{type Effect, batch, none}
 import lustre/element.{type Element, text, unsafe_raw_html}
 import lustre/element/html.{
-  button, div, form, h2, h3, li, option, p, select, span, textarea, ul,
+  button, div, form, h2, h3, li, ol, option, p, select, span, textarea, ul,
 }
 import lustre/event
 import lustre_http
+import clipboard
 import markdown
+import diff_view
 import routes
+import time_format
 
 pub type Tab {
   Conversation
@@ -45,6 +48,8 @@ pub type Model {
     show_merge_confirm: Bool,
     merge_method: api.MergeMethod,
     loading: Bool,
+    commits_loading: Bool,
+    copied_commit_sha: option.Option(String),
     loading_patch: Bool,
     error: option.Option(String),
   )
@@ -59,9 +64,12 @@ pub type Msg {
   TabChanged(Tab)
   CommentBodyChanged(String)
   CommentOnLine(String, Int)
+  CancelInlineComment
+  GoToLineComment(String, Int)
   SubmitComment
   CommentPosted(Result(MrComment, lustre_http.HttpError))
   SelectFile(String)
+  CopyCommitSha(String)
   MergeMethodChanged(api.MergeMethod)
   ShowMergeConfirm
   CancelMergeConfirm
@@ -89,6 +97,8 @@ pub fn init(org_slug: String, repo_name: String, number: Int) -> Model {
     show_merge_confirm: False,
     merge_method: api.MergeCommit,
     loading: True,
+    commits_loading: False,
+    copied_commit_sha: option.None,
     loading_patch: False,
     error: option.None,
   )
@@ -134,8 +144,8 @@ fn tab_load(config: Config, model: Model, tab: Tab) -> Effect(Msg) {
           )
         _ -> none()
       }
-    Changes ->
-      case model.diff_files {
+    Changes -> {
+      let load_diff = case model.diff_files {
         [] ->
           lustre_http.get(
             config,
@@ -144,6 +154,17 @@ fn tab_load(config: Config, model: Model, tab: Tab) -> Effect(Msg) {
           )
         _ -> none()
       }
+      let load_comments = case model.comments {
+        [] ->
+          lustre_http.get(
+            config,
+            base <> "/comments",
+            lustre_http.expect_json(api.mr_comments_decoder(), CommentsLoaded),
+          )
+        _ -> none()
+      }
+      batch([load_diff, load_comments])
+    }
   }
 }
 
@@ -163,11 +184,11 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
     )
     CommentsLoaded(Error(_)) -> #(model, none())
     CommitsLoaded(Ok(commits)) -> #(
-      Model(..model, commits:),
+      Model(..model, commits:, commits_loading: False),
       none(),
     )
     CommitsLoaded(Error(_)) -> #(
-      Model(..model, error: option.Some("Failed to load commits")),
+      Model(..model, commits_loading: False, error: option.Some("Failed to load commits")),
       none(),
     )
     DiffLoaded(Ok(files)) -> #(
@@ -186,19 +207,70 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
       Model(..model, loading_patch: False, error: option.Some("Failed to load patch")),
       none(),
     )
-    TabChanged(tab) -> #(
-      Model(..model, tab:),
-      tab_load(config, model, tab),
-    )
+    TabChanged(tab) -> {
+      let commits_loading = tab == Commits && model.commits == []
+      let clear_inline = case tab {
+        Conversation | Commits -> True
+        Changes -> False
+      }
+      let model =
+        Model(
+          ..model,
+          tab:,
+          commits_loading:,
+          comment_file: case clear_inline {
+            True -> option.None
+            False -> model.comment_file
+          },
+          comment_line: case clear_inline {
+            True -> option.None
+            False -> model.comment_line
+          },
+          comment_body: case clear_inline {
+            True -> ""
+            False -> model.comment_body
+          },
+        )
+      #(
+        model,
+        tab_load(config, model, tab),
+      )
+    }
+    CopyCommitSha(sha) -> {
+      let _ = clipboard.copy(sha)
+      #(Model(..model, copied_commit_sha: option.Some(sha)), none())
+    }
     CommentBodyChanged(v) -> #(Model(..model, comment_body: v), none())
     CommentOnLine(file, line) -> #(
       Model(
         ..model,
         comment_file: option.Some(file),
         comment_line: option.Some(line),
-        tab: Conversation,
+        comment_body: "",
       ),
       none(),
+    )
+    CancelInlineComment -> #(
+      Model(..model, comment_file: option.None, comment_line: option.None, comment_body: ""),
+      none(),
+    )
+    GoToLineComment(file, line) -> #(
+      Model(
+        ..model,
+        tab: Changes,
+        selected_file: option.Some(file),
+        comment_file: option.Some(file),
+        comment_line: option.Some(line),
+        patch: option.None,
+        loading_patch: True,
+      ),
+      lustre_http.get(
+        config,
+        api_base(config, model)
+          <> "/diff?path="
+          <> uri_encode(file),
+        lustre_http.expect_json(api.diff_patch_decoder(), PatchLoaded),
+      ),
     )
     SubmitComment -> #(
       model,
@@ -620,33 +692,142 @@ fn comments_list(comments: List(MrComment)) -> Element(Msg) {
 
 fn comment_item(c: MrComment) -> Element(Msg) {
   let meta = case c.file_path, c.line {
-    option.Some(f), option.Some(l) -> " on " <> f <> ":" <> int.to_string(l)
-    _, _ -> ""
+    option.Some(f), option.Some(l) ->
+      button(
+        [
+          attr.type_("button"),
+          attr.class("text-gh-accent hover:underline"),
+          event.on_click(GoToLineComment(f, l)),
+        ],
+        [text(" on " <> f <> ":" <> int.to_string(l))],
+      )
+    _, _ -> text("")
   }
   li([], [
-    p([attr.class("text-xs text-gh-muted")], [text(c.created_at <> meta)]),
+    p([attr.class("text-xs text-gh-muted")], [
+      span([attr.class("font-medium text-gh-ink")], [
+        text(api.comment_author_label(c)),
+      ]),
+      text(" · " <> c.created_at),
+      meta,
+    ]),
     p([attr.class("mt-1 text-sm text-gh-ink whitespace-pre-wrap")], [text(c.body)]),
   ])
 }
 
+fn commit_count_label(count: Int) -> String {
+  case count {
+    1 -> "1 commit"
+    n -> int.to_string(n) <> " commits"
+  }
+}
+
+fn author_initials(author: String) -> String {
+  let parts =
+    author
+    |> string.split(on: " ")
+    |> list.filter(fn(s) { string.trim(s) != "" })
+  case parts {
+    [] -> "?"
+    [only] -> string.uppercase(string.slice(only, 0, 1))
+    [first, second, ..] ->
+      string.uppercase(string.slice(first, 0, 1))
+      <> string.uppercase(string.slice(second, 0, 1))
+  }
+}
+
+fn short_sha(sha: String) -> String {
+  string.slice(sha, 0, 7)
+}
+
+fn commits_chronological(commits: List(MrCommit)) -> List(MrCommit) {
+  list.reverse(commits)
+}
+
+fn commit_timeline_item(
+  c: MrCommit,
+  is_last: Bool,
+  copied: Bool,
+) -> Element(Msg) {
+  let line_class = case is_last {
+    True -> "hidden"
+    False -> "absolute left-[1.125rem] top-9 bottom-0 w-px -translate-x-1/2 bg-slate-200"
+  }
+  li([attr.class("relative flex gap-3 pb-6 last:pb-0")], [
+    span([attr.class(line_class)], []),
+    span(
+      [
+        attr.class(
+          "relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-white bg-slate-200 text-xs font-semibold text-slate-600 ring-1 ring-slate-200",
+        ),
+      ],
+      [text(author_initials(c.author))],
+    ),
+    div([attr.class("min-w-0 flex-1 pt-0.5")], [
+      div([attr.class("flex items-start justify-between gap-3")], [
+        div([attr.class("min-w-0")], [
+          p([attr.class("text-sm font-semibold leading-snug text-gh-ink")], [
+            text(c.subject),
+          ]),
+          p([attr.class("mt-1 text-sm text-gh-muted")], [
+            span([attr.class("font-medium text-gh-ink")], [text(c.author)]),
+            text(" committed " <> time_format.format_commit_time(c.committed_at)),
+          ]),
+        ]),
+        button(
+          [
+            attr.type_("button"),
+            attr.title("Copy full SHA"),
+            attr.class(
+              "shrink-0 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-xs text-gh-muted transition hover:border-slate-300 hover:bg-white hover:text-gh-ink",
+            ),
+            event.on_click(CopyCommitSha(c.sha)),
+          ],
+          [
+            text(case copied {
+              True -> "Copied"
+              False -> short_sha(c.sha)
+            }),
+          ],
+        ),
+      ]),
+    ]),
+  ])
+}
+
 fn commits_tab(model: Model) -> Element(Msg) {
-  case model.commits {
-    [] ->
-      components.empty_state("No commits or still loading…")
-    commits ->
-      div([attr.class(components.card)], [
-        ul([attr.class("space-y-3")], list.map(commits, fn(c) {
-          li([], [
-            p([attr.class("font-mono text-xs text-gh-muted")], [
-              text(string.slice(c.sha, 0, 7)),
+  case model.commits_loading, model.commits {
+    True, [] -> components.empty_state("Loading commits…")
+    False, [] -> components.empty_state("No commits on this branch yet.")
+    _, commits -> {
+      let chronological = commits_chronological(commits)
+      let count = list.length(chronological)
+      let last_index = count - 1
+      div([attr.class(components.card <> " !p-0 overflow-hidden")], [
+        div(
+          [
+            attr.class(
+              "border-b border-slate-200 bg-slate-50/80 px-4 py-3 sm:px-6",
+            ),
+          ],
+          [
+            p([attr.class("text-sm font-semibold text-gh-ink")], [
+              text(commit_count_label(count)),
             ]),
-            p([attr.class("text-sm font-medium text-gh-ink")], [text(c.subject)]),
             p([attr.class("text-xs text-gh-muted")], [
-              text(c.author <> " · " <> c.committed_at),
+              text("Commits on the source branch, oldest first"),
             ]),
-          ])
-        })),
+          ],
+        ),
+        ol(
+          [attr.class("relative list-none px-4 py-5 sm:px-6")],
+          list.index_map(chronological, fn(c, index) {
+            let copied = model.copied_commit_sha == option.Some(c.sha)
+            commit_timeline_item(c, index == last_index, copied)
+          }),
+        ),
       ])
+    }
   }
 }
 
@@ -697,53 +878,129 @@ fn patch_panel(model: Model) -> Element(Msg) {
         False ->
           case model.patch {
             option.None -> components.empty_state("No patch")
-            option.Some(patch) -> patch_view(path, patch)
+            option.Some(patch) -> patch_view(model, path, patch)
           }
       }
   }
 }
 
-fn patch_view(file_path: String, patch: String) -> Element(Msg) {
-  let lines = string.split(patch, on: "\n")
-  let rows =
-    list.index_map(lines, fn(line, idx) {
-      let line_no = idx + 1
-      let row_class = case string.starts_with(line, "+") {
-        True ->
-          case string.starts_with(line, "+++") {
-            True -> "diff-line diff-meta"
-            False -> "diff-line diff-add"
-          }
-        False ->
-          case string.starts_with(line, "-") {
-            True -> "diff-line diff-del"
-            False -> "diff-line"
-          }
-      }
-      let comment_btn = case string.starts_with(line, "+") {
-        True ->
-          case string.starts_with(line, "+++") {
-            True -> text("")
-            False ->
-              button(
-                [
-                  attr.type_("button"),
-                  attr.class("ml-2 text-xs text-gh-accent hover:underline"),
-                  event.on_click(CommentOnLine(file_path, line_no)),
-                ],
-                [text("Comment")],
-              )
-          }
-        False -> text("")
-      }
-      li([attr.class(row_class)], [
-        span([attr.class("diff-lineno mr-2 select-none text-gh-muted")], [
-          text(int.to_string(line_no)),
+fn comments_on_line(
+  comments: List(MrComment),
+  file_path: String,
+  line: Int,
+) -> List(MrComment) {
+  list.filter(comments, fn(c) {
+    c.file_path == option.Some(file_path) && c.line == option.Some(line)
+  })
+}
+
+fn inline_comment_active(model: Model, file_path: String, line: Int) -> Bool {
+  model.comment_file == option.Some(file_path)
+  && model.comment_line == option.Some(line)
+}
+
+fn inline_comment_composer(_file_path: String, line: Int, model: Model) -> Element(Msg) {
+  div([attr.class("diff-inline-composer")], [
+    form(
+      [event.on_submit(fn(_) { SubmitComment }), attr.class("space-y-2")],
+      [
+        textarea(
+          [
+            attr.class(components.textarea <> " !min-h-[4rem]"),
+            attr.placeholder("Leave a comment on line " <> int.to_string(line) <> "…"),
+            attr.value(model.comment_body),
+            event.on_input(CommentBodyChanged),
+          ],
+          "",
+        ),
+        div([attr.class("flex justify-end gap-2")], [
+          button(
+            [
+              attr.type_("button"),
+              attr.class(components.btn_secondary),
+              event.on_click(CancelInlineComment),
+            ],
+            [text("Cancel")],
+          ),
+          button([attr.type_("submit"), attr.class(components.btn_primary)], [
+            text("Add review comment")],
+          ),
         ]),
-        span([attr.class("font-mono text-sm")], [text(line)]),
-        comment_btn,
+      ],
+    ),
+  ])
+}
+
+fn inline_thread_item(c: MrComment) -> Element(Msg) {
+  div([attr.class("diff-inline-thread")], [
+    p([attr.class("text-xs text-gh-muted")], [
+      text(api.comment_author_label(c) <> " · " <> c.created_at),
+    ]),
+    p([attr.class("mt-1 text-sm text-gh-ink whitespace-pre-wrap")], [text(c.body)]),
+  ])
+}
+
+fn patch_line_row(model: Model, file_path: String, line: diff_view.DiffLine) -> Element(Msg) {
+  case line.kind {
+    diff_view.Meta ->
+      li([], [div([attr.class("diff-meta")], [text(line.text)])])
+    _ -> {
+      let row_class = diff_view.row_class(line)
+      let line_comments = case diff_view.commentable_new_line(line) {
+        option.Some(n) -> comments_on_line(model.comments, file_path, n)
+        option.None -> []
+      }
+      let has_comments = line_comments != []
+      let row_extra = case has_comments {
+        True -> " diff-row-has-comments"
+        False -> ""
+      }
+      let gutter = case diff_view.commentable_new_line(line) {
+        option.Some(n) -> int.to_string(n)
+        option.None -> ""
+      }
+      let comment_btn = case diff_view.commentable_new_line(line) {
+        option.Some(n) ->
+          button(
+            [
+              attr.type_("button"),
+              attr.class("diff-comment-gutter"),
+              attr.title("Add comment on line " <> int.to_string(n)),
+              event.on_click(CommentOnLine(file_path, n)),
+            ],
+            [text("+")],
+          )
+        option.None -> text("")
+      }
+      let composer = case diff_view.commentable_new_line(line) {
+        option.Some(n) ->
+          case inline_comment_active(model, file_path, n) {
+            True -> inline_comment_composer(file_path, n, model)
+            False -> text("")
+          }
+        option.None -> text("")
+      }
+      let threads = case line_comments {
+        [] -> text("")
+        items ->
+          div([], list.map(items, fn(c) { inline_thread_item(c) }))
+      }
+      li([], [
+        div([attr.class(row_class <> " diff-row group" <> row_extra)], [
+          span([attr.class("diff-lineno")], [text(gutter)]),
+          span([attr.class("diff-code")], [text(line.text)]),
+          comment_btn,
+        ]),
+        threads,
+        composer,
       ])
-    })
+    }
+  }
+}
+
+fn patch_view(model: Model, file_path: String, patch: String) -> Element(Msg) {
+  let lines = diff_view.parse_patch(patch)
+  let rows = list.map(lines, fn(line) { patch_line_row(model, file_path, line) })
   div([attr.class(components.card)], [
     h3([attr.class("mb-2 text-sm font-semibold text-gh-ink")], [text(file_path)]),
     ul([attr.class("diff-patch overflow-x-auto")], rows),

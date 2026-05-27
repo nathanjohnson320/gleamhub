@@ -1,4 +1,4 @@
-import app/database.{type RepoRow, get_repo, upsert_user}
+import app/database.{type RepoRow, get_repo}
 import app/git_exec
 import app/json_api
 import app/org_access
@@ -17,10 +17,7 @@ fn user_id(ctx: Context) -> String {
 
 fn ensure_user(ctx: Context) -> Result(Nil, Response) {
   case ctx.user_id {
-    option.Some(id) -> {
-      let _ = upsert_user(ctx.repo(), id, option.None, ctx.email)
-      Ok(Nil)
-    }
+    option.Some(_) -> Ok(Nil)
     option.None -> Error(wisp.response(401))
   }
 }

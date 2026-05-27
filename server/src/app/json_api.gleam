@@ -202,6 +202,7 @@ pub fn merge_request_comment_json(comment: MergeRequestCommentRow) -> json.Json 
   json.object([
     #("id", json.string(comment.id)),
     #("author_user_id", json.string(comment.author_user_id)),
+    #("author_name", json.string(comment.author_name)),
     #("body", json.string(comment.body)),
     #("file_path", optional_string(comment.file_path)),
     #(

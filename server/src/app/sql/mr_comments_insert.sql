@@ -13,6 +13,7 @@ WHERE o.slug = $1 AND r.name = $2 AND mr.number = $3
 RETURNING
   id::text,
   author_user_id,
+  author_user_id AS author_name,
   body,
   file_path,
   line,

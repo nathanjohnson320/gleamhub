@@ -1,3 +1,4 @@
+import app/clerk_api
 import app/router
 import app/web.{Context}
 import dot_env
@@ -58,7 +59,7 @@ pub fn main() {
       git_repos_root: git_repos_root,
       git_host: git_host,
       user_id: option.None,
-      email: option.None,
+      clerk: clerk_api.client_from_env(),
     )
 
   let handler = router.handle_request(_, ctx)

@@ -1,3 +1,4 @@
+import app/clerk_api
 import app/database as database
 import app/git_exec
 import app/json_api
@@ -20,11 +21,18 @@ fn user_id(ctx: Context) -> String {
 
 fn ensure_user(ctx: Context) -> Result(Nil, Response) {
   case ctx.user_id {
-    option.Some(id) -> {
-      let _ = database.upsert_user(ctx.repo(), id, option.None, ctx.email)
-      Ok(Nil)
-    }
+    option.Some(_) -> Ok(Nil)
     option.None -> Error(wisp.response(401))
+  }
+}
+
+fn hydrate_comments(
+  ctx: Context,
+  comments: List(database.MergeRequestCommentRow),
+) -> List(database.MergeRequestCommentRow) {
+  case ctx.clerk {
+    option.Some(client) -> clerk_api.hydrate_comments(client, comments)
+    option.None -> comments
   }
 }
 
@@ -443,8 +451,10 @@ pub fn list_comments(
                 number,
               )
             {
-              Ok(comments) ->
+              Ok(comments) -> {
+                let comments = hydrate_comments(ctx, comments)
                 json_ok(json_api.merge_request_comments_json(comments), 200)
+              }
               Error(_) -> wisp.internal_server_error()
             }
           })
@@ -482,27 +492,68 @@ pub fn create_comment(
               case string.trim(body) {
                 "" -> wisp.bad_request("Comment body is required")
                 _ ->
-                  with_mr(ctx, org_slug, repo_name, number, fn(_mr, _dir) {
-                    case
-                      database.insert_merge_request_comment(
-                        ctx.repo(),
-                        org_slug,
-                        repo_name,
-                        number,
-                        user_id(ctx),
-                        body,
-                        file_path,
-                        line,
-                      )
-                    {
-                      Ok(comment) ->
-                        json_ok(
-                          json_api.merge_request_comment_json(comment),
-                          201,
-                        )
-                      Error(_) -> wisp.internal_server_error()
-                    }
-                  })
+                  case file_path, line {
+                    option.Some(_), option.None ->
+                      wisp.bad_request("line is required for file comments")
+                    option.Some(_), option.Some(n) ->
+                      case n > 0 {
+                        False -> wisp.bad_request("line must be positive")
+                        True ->
+                          with_mr(ctx, org_slug, repo_name, number, fn(_mr, _dir) {
+                            case
+                              database.insert_merge_request_comment(
+                                ctx.repo(),
+                                org_slug,
+                                repo_name,
+                                number,
+                                user_id(ctx),
+                                body,
+                                file_path,
+                                line,
+                              )
+                            {
+                              Ok(comment) -> {
+                                let comment = case hydrate_comments(ctx, [comment]) {
+                                  [hydrated] -> hydrated
+                                  _ -> comment
+                                }
+                                json_ok(
+                                  json_api.merge_request_comment_json(comment),
+                                  201,
+                                )
+                              }
+                              Error(_) -> wisp.internal_server_error()
+                            }
+                          })
+                      }
+                    _, _ ->
+                      with_mr(ctx, org_slug, repo_name, number, fn(_mr, _dir) {
+                        case
+                          database.insert_merge_request_comment(
+                            ctx.repo(),
+                            org_slug,
+                            repo_name,
+                            number,
+                            user_id(ctx),
+                            body,
+                            file_path,
+                            line,
+                          )
+                        {
+                          Ok(comment) -> {
+                            let comment = case hydrate_comments(ctx, [comment]) {
+                              [hydrated] -> hydrated
+                              _ -> comment
+                            }
+                            json_ok(
+                              json_api.merge_request_comment_json(comment),
+                              201,
+                            )
+                          }
+                          Error(_) -> wisp.internal_server_error()
+                        }
+                      })
+                  }
               }
           }
         }

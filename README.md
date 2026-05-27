@@ -50,6 +50,8 @@ Use **one** Clerk application for both server and UI.
 
    ```bash
    CLERK_JWKS='{"use":"sig","kty":"RSA","kid":"...","alg":"RS256","n":"...","e":"AQAB"}'
+
+   CLERK_SECRET_KEY=sk_test_...
    ```
 
    The server expects a **single RSA JWK object** (not the full JWKS array). You can take the first key from your Clerk JWKS URL (`https://<your-clerk-domain>/.well-known/jwks.json`) or match the format in `server/.env.example`.
@@ -88,7 +90,7 @@ After pushing a feature branch over SSH:
 
 1. Open the repository in the UI → **Merge requests** → **New merge request**.
 2. Choose **source** (your branch) and **target** (e.g. `main`), add a title, and create.
-3. On the merge request page, use **Conversation**, **Commits**, and **Changes** (file diff with line comments).
+3. On the merge request page, use **Conversation**, **Commits**, and **Changes**. On **Changes**, hover a line and click **+** to leave an inline review comment (line numbers refer to the new file version); **Conversation** is for MR-wide discussion.
 4. Org members with **write** access can **Merge** when Git reports no conflicts; the author (or a writer) can **Close** an open MR.
 
 The server stores MR metadata in Postgres; diffs and merges run live against the bare repo (`git merge-base`, `git diff`, worktree merge + `update-ref`).
@@ -206,6 +208,7 @@ Org members with a registered SSH key can read/write all repos in that org (MVP 
 | Variable | Where | Description |
 |----------|-------|-------------|
 | `CLERK_JWKS` | `/.env`, `server/.env` | Single RSA JWK JSON for JWT verification |
+| `CLERK_SECRET_KEY` | `server/.env` | Clerk secret key (`sk_…`) for Backend API user lookups (comment author names) |
 | `VITE_CLERK_PUBLISHABLE_KEY` | `ui/.env` | Clerk publishable key |
 | `SECRET_KEY_BASE` | `/.env`, `server/.env` | Wisp session signing |
 | `DATABASE_URL` | `server/.env` | Postgres (Docker sets this in compose) |

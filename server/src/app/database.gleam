@@ -51,6 +51,7 @@ pub type MergeRequestCommentRow {
   MergeRequestCommentRow(
     id: String,
     author_user_id: String,
+    author_name: String,
     body: String,
     file_path: Option(String),
     line: Option(Int),
@@ -59,19 +60,46 @@ pub type MergeRequestCommentRow {
   )
 }
 
+pub fn display_name_from_email(email: Option(String)) -> Option(String) {
+  case email {
+    option.None -> option.None
+    option.Some(e) ->
+      case string.split(e, on: "@") {
+        [local, ..] -> option.Some(local)
+        _ -> option.Some(e)
+      }
+  }
+}
+
+pub fn upsert_session_user(
+  db: pog.Connection,
+  user_id: String,
+  display_name: Option(String),
+  email: Option(String),
+) -> Result(Nil, pog.QueryError) {
+  let display =
+    case display_name {
+      option.Some(_) as from_jwt -> from_jwt
+      option.None -> display_name_from_email(email)
+    }
+  upsert_user(db, user_id, display, email)
+}
+
 pub fn upsert_user(
   db: pog.Connection,
   id: String,
   display_name: Option(String),
   email: Option(String),
 ) -> Result(Nil, pog.QueryError) {
-  sql.users_upsert(
-    db,
-    id,
-    nullable_text(display_name),
-    nullable_text(email),
-  )
+  sql.users_upsert(db, id, display_name, email)
   |> result_map_ok
+}
+
+pub fn comment_with_author_name(
+  comment: MergeRequestCommentRow,
+  author_name: String,
+) -> MergeRequestCommentRow {
+  MergeRequestCommentRow(..comment, author_name:)
 }
 
 pub fn list_orgs_for_user(db: pog.Connection, user_id: String) -> Result(
@@ -587,6 +615,7 @@ fn mr_comment_from_list_row(row: sql.MrCommentsListRow) -> MergeRequestCommentRo
   mr_comment_row(
     row.id,
     row.author_user_id,
+    row.author_name,
     row.body,
     row.file_path,
     row.line,
@@ -599,6 +628,7 @@ fn mr_comment_from_insert_row(row: sql.MrCommentsInsertRow) -> MergeRequestComme
   mr_comment_row(
     row.id,
     row.author_user_id,
+    row.author_name,
     row.body,
     row.file_path,
     row.line,
@@ -610,6 +640,7 @@ fn mr_comment_from_insert_row(row: sql.MrCommentsInsertRow) -> MergeRequestComme
 fn mr_comment_row(
   id: String,
   author_user_id: String,
+  author_name: String,
   body: String,
   file_path: Option(String),
   line: Option(Int),
@@ -619,6 +650,7 @@ fn mr_comment_row(
   MergeRequestCommentRow(
     id:,
     author_user_id:,
+    author_name:,
     body:,
     file_path:,
     line:,

@@ -10,6 +10,14 @@ import gleam/option
 import gleam/result
 import lustre/effect.{type Effect}
 
+fn with_token(req: Request(String), config: Config) -> Request(String) {
+  case config.token {
+    option.Some(token) ->
+      request.set_header(req, "authorization", "Bearer " <> token)
+    option.None -> req
+  }
+}
+
 // SENDING REQUESTS ------------------------------------------------------------
 
 /// Send a GET request to the given URL and say what kind of response you're
@@ -45,14 +53,7 @@ import lustre/effect.{type Effect}
 pub fn get(config: Config, url: String, expect: Expect(msg)) -> Effect(msg) {
   effect.from(fn(dispatch) {
     case request.to(url) {
-      Ok(req) -> {
-        let req = case config.token {
-          option.Some(token) ->
-            request.set_header(req, "Authorization", "Bearer " <> token)
-          option.None -> req
-        }
-        do_send(req, expect, dispatch)
-      }
+      Ok(req) -> do_send(with_token(req, config), expect, dispatch)
       Error(_) -> dispatch(expect.run(Error(BadUrl(url))))
     }
   })
@@ -101,14 +102,10 @@ pub fn post(
   effect.from(fn(dispatch) {
     case request.to(url) {
       Ok(req) -> {
-        let req = case config.token {
-          option.Some(token) ->
-            request.set_header(req, "Authorization", "Bearer " <> token)
-          option.None -> req
-        }
         req
+        |> with_token(config)
         |> request.set_method(http.Post)
-        |> request.set_header("Content-Type", "application/json")
+        |> request.set_header("content-type", "application/json")
         |> request.set_body(json.to_string(body))
         |> do_send(expect, dispatch)
       }
@@ -134,14 +131,10 @@ pub fn put(
   effect.from(fn(dispatch) {
     case request.to(url) {
       Ok(req) -> {
-        let req = case config.token {
-          option.Some(token) ->
-            request.set_header(req, "Authorization", "Bearer " <> token)
-          option.None -> req
-        }
         req
+        |> with_token(config)
         |> request.set_method(http.Put)
-        |> request.set_header("Content-Type", "application/json")
+        |> request.set_header("content-type", "application/json")
         |> request.set_body(json.to_string(body))
         |> do_send(expect, dispatch)
       }
@@ -154,12 +147,8 @@ pub fn delete(config: Config, url: String, expect: Expect(msg)) -> Effect(msg) {
   effect.from(fn(dispatch) {
     case request.to(url) {
       Ok(req) -> {
-        let req = case config.token {
-          option.Some(token) ->
-            request.set_header(req, "Authorization", "Bearer " <> token)
-          option.None -> req
-        }
         req
+        |> with_token(config)
         |> request.set_method(http.Delete)
         |> do_send(expect, dispatch)
       }
