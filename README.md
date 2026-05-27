@@ -4,12 +4,15 @@ Gleam-native Git hosting MVP: Clerk sign-in, orgs/repos in the browser, SSH clon
 
 ## 5-minute setup
 
-**You need:** [Docker](https://www.docker.com/), [Node.js](https://nodejs.org/) (for the UI dev server), and a [Clerk](https://clerk.com/) app (or use the example env files if your team shares the dev Clerk instance).
+**You need:** [Docker](https://www.docker.com/), a [Clerk](https://clerk.com/) app (or the example env files), and—for local Gleam/Node work—[asdf](https://asdf-vm.com/) or [mise](https://mise.jdx.dev/):
 
 ```bash
 git clone https://github.com/nathanjohnson320/gleamhub.git
 cd gleamhub
+asdf install   # or: mise install — reads .tool-versions (gleam, erlang, nodejs)
+```
 
+```bash
 # 1. Env files (edit only if you use your own Clerk app — see below)
 cp .env.example .env
 cp server/.env.example server/.env
