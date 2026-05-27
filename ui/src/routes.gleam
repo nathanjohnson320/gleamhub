@@ -1,3 +1,4 @@
+import gleam/int
 import gleam/list
 import gleam/string
 import gleam/uri.{type Uri}
@@ -91,6 +92,33 @@ pub fn repo_blob_path(org: String, repo: String, ref: String, path: String) -> S
   <> uri.percent_encode(ref)
   <> "/"
   <> encode_path(path)
+}
+
+/// Permalink to one line (GitHub-style `#L42`).
+pub fn repo_blob_line_path(
+  org: String,
+  repo: String,
+  ref: String,
+  path: String,
+  line: Int,
+) -> String {
+  repo_blob_path(org, repo, ref, path) <> "#L" <> int.to_string(line)
+}
+
+/// Permalink to a line range (`#L10-L25`).
+pub fn repo_blob_line_range_path(
+  org: String,
+  repo: String,
+  ref: String,
+  path: String,
+  start_line: Int,
+  end_line: Int,
+) -> String {
+  repo_blob_path(org, repo, ref, path)
+  <> "#L"
+  <> int.to_string(start_line)
+  <> "-L"
+  <> int.to_string(end_line)
 }
 
 fn encode_path(path: String) -> String {

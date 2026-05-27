@@ -1,8 +1,8 @@
 import gleam/list
 import gleam/string
 
-@external(javascript, "./highlight_ffi.js", "highlight_code")
-fn highlight_code_ffi(code: String, language: String) -> String
+@external(javascript, "./highlight_ffi.js", "highlight_code_table")
+fn highlight_code_table_ffi(code: String, language: String) -> String
 
 /// Map a repository file path to a highlight.js language id (empty = auto-detect).
 pub fn language_for_path(path: String) -> String {
@@ -54,14 +54,5 @@ fn file_extension(path: String) -> String {
 
 pub fn to_html(code: String, path: String) -> String {
   let language = language_for_path(path)
-  let inner = highlight_code_ffi(code, language)
-  let lang_class = case language {
-    "" -> "hljs"
-    lang -> "hljs language-" <> lang
-  }
-  "<pre class=\"repo-blob-pre\"><code class=\""
-  <> lang_class
-  <> "\">"
-  <> inner
-  <> "</code></pre>"
+  highlight_code_table_ffi(code, language)
 }

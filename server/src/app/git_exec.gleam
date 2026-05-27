@@ -205,9 +205,12 @@ pub fn read_blob(
         True -> Error(BlobTooLarge)
         False -> {
           use content <- result.try(run_git(git_dir, ["cat-file", "blob", spec]))
-          let binary = is_binary_content(content)
+          let binary = is_binary_blob(content, size)
           Ok(BlobContent(
-            content:,
+            content: case binary {
+              True -> ""
+              False -> content
+            },
             size:,
             encoding: case binary {
               True -> "binary"
@@ -219,6 +222,10 @@ pub fn read_blob(
       }
     }
   }
+}
+
+fn is_binary_blob(content: String, size: Int) -> Bool {
+  is_binary_content(content) || { size > 0 && content == "" }
 }
 
 fn parse_int(s: String) -> Int {

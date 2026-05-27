@@ -16,6 +16,7 @@ import lustre/element/html.{
 }
 import lustre/event
 import lustre_http
+import blob_lines
 import highlight
 import markdown
 import modem
@@ -235,7 +236,7 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
     )
     LoadedBlob(Ok(blob)) -> #(
       Model(..model, blob: option.Some(blob), loading: False),
-      effect.none(),
+      blob_lines.init_effect(),
     )
     LoadedBlob(Error(_)) -> #(
       Model(..model, error: option.Some("Could not load file"), loading: False),

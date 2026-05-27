@@ -56,5 +56,10 @@ pub fn browse_fixture_repo_test() {
   let assert False = blob.binary
   let assert True = string.contains(blob.content, "Gleamhub test")
 
+  let assert Ok(changelog) = git_exec.read_blob(git_dir, "main", "CHANGELOG.md")
+  let assert False = changelog.binary
+  let assert True = string.contains(changelog.content, "Initial release")
+  let assert True = string.contains(changelog.content, "__GLEAMHUB_EXIT:0")
+
   cleanup_fixture_repo(git_dir)
 }

@@ -7,31 +7,45 @@ init_bare(PathBin) when is_binary(PathBin) ->
   os:cmd(Cmd),
   nil.
 
+%% os:cmd/1 returns only output text, not the exit code — that forced the old
+%% __GLEAMHUB_EXIT marker in stdout (broken when file content contained it).
+%% A port with exit_status returns stdout and exit code separately; no temp files.
 run_git(GitDirBin, ArgsBin) ->
   GitDir = binary_to_list(GitDirBin),
   Args = lists:map(fun arg_to_list/1, ArgsBin),
-  Inner =
+  Cmd =
     "git -C "
     ++ quote(GitDir)
     ++ " "
     ++ join_quoted_args(Args)
-    ++ " 2>&1; echo __GLEAMHUB_EXIT:$?",
-  Cmd = "sh -c " ++ quote(Inner),
-  Output = string:trim(os:cmd(Cmd), trailing, "\n"),
-  {Exit, Stdout, Stderr} = parse_output(Output),
-  {Exit, list_to_binary(Stdout), list_to_binary(Stderr)}.
+    ++ " 2>&1",
+  Port = open_port({spawn, Cmd}, [exit_status, binary]),
+  {Exit, Stdout, Stderr} = collect_port(Port, <<>>, <<>>),
+  {Exit, gleam_string(Stdout), gleam_string(Stderr)}.
 
-parse_output(Output) ->
-  case string:split(Output, "__GLEAMHUB_EXIT:", trailing) of
-    [Body, ExitStr] ->
-      Exit =
-        case string:to_integer(string:trim(ExitStr, trailing, "\n")) of
-          {N, _} when is_integer(N) -> N;
-          error -> 1
-        end,
-      {Exit, Body, ""};
-    _ ->
-      {1, Output, ""}
+collect_port(Port, OutAcc, ErrAcc) ->
+  receive
+    {Port, {data, Data}} ->
+      collect_port(Port, <<OutAcc/binary, Data/binary>>, ErrAcc);
+    {Port, {exit_status, Status}} ->
+      {Status, OutAcc, ErrAcc};
+    {'EXIT', Port, _Reason} ->
+      {1, OutAcc, ErrAcc}
+  after 120_000 ->
+    port_close(Port),
+    {1, OutAcc, ErrAcc}
+  end.
+
+valid_utf8(Bin) when is_binary(Bin) ->
+  case unicode:characters_to_binary(Bin, utf8, utf8) of
+    Result when is_binary(Result) -> true;
+    _ -> false
+  end.
+
+gleam_string(Bin) ->
+  case valid_utf8(Bin) of
+    true -> Bin;
+    false -> <<>>
   end.
 
 join_quoted_args([]) ->

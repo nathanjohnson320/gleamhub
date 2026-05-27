@@ -16,6 +16,10 @@ setup_fixture_repo() ->
     filename:join([Work, "src", "main.gleam"]),
     <<"pub fn main() { Nil }\n">>
   ),
+  ok = file:write_file(
+    filename:join([Work, "CHANGELOG.md"]),
+    <<"# Changelog\n\n## 1.0.0\n- Initial release\n__GLEAMHUB_EXIT:0\n">>
+  ),
   _ = os:cmd(
     "cd "
     ++ quote(Work)

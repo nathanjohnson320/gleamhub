@@ -10,13 +10,14 @@ import lustre/effect.{type Effect}
 import lustre/element.{type Element, map, text}
 import lustre/element/html.{a, button, div, header, nav, span}
 import lustre/event
+import blob_lines
 import modem
 import pages/keys
 import pages/org_repos
 import pages/orgs
 import pages/repo_view
 import routes.{
-  type Route, Keys, NotFound, OrgRepos, Orgs, RepoMissingOrg, RepoView,
+  type Route, Blob, Keys, NotFound, OrgRepos, Orgs, RepoMissingOrg, RepoView,
   from_uri,
 }
 
@@ -148,15 +149,27 @@ fn route_effect(config: config.Config, route: Route) -> Effect(Msg) {
 
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case msg {
-    OnRouteChange(route) -> #(
-      Model(
-        ..model,
-        route:,
-        repos: repos_model(route),
-        repo_view: repo_view_model(route),
-      ),
-      route_effect(model.config, route),
-    )
+    OnRouteChange(route) -> {
+      // Hash-only line links (#L10) keep the same Route; don't re-init the view.
+      case model.route == route {
+        True -> #(
+          model,
+          case route {
+            RepoView(Blob, _, _, _, _) -> blob_lines.init_effect()
+            _ -> effect.none()
+          },
+        )
+        False -> #(
+          Model(
+            ..model,
+            route:,
+            repos: repos_model(route),
+            repo_view: repo_view_model(route),
+          ),
+          route_effect(model.config, route),
+        )
+      }
+    }
     OrgsMsg(m) -> {
       let #(orgs, eff) = orgs.update(m, model.orgs, model.config)
       #(Model(..model, orgs:), effect.map(eff, OrgsMsg))

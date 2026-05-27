@@ -96,6 +96,36 @@
   @apply bg-slate-900;
 }
 
+.repo-blob-table {
+  @apply w-full border-collapse font-mono text-xs leading-relaxed;
+}
+
+.repo-line-num {
+  @apply w-12 select-none border-r border-slate-700/80 bg-slate-900/90 px-2 py-0 text-right align-top text-slate-500;
+}
+
+.repo-line-link {
+  @apply block no-underline hover:text-gh-accent;
+}
+
+.repo-line-code {
+  @apply whitespace-pre px-4 py-0 align-top;
+}
+
+.repo-line-code code.hljs {
+  @apply block bg-transparent p-0;
+}
+
+.repo-line-highlight .repo-line-num,
+.repo-line-highlight .repo-line-code {
+  @apply bg-violet-950/50;
+}
+
+.repo-line:target .repo-line-num,
+.repo-line:target .repo-line-code {
+  @apply bg-violet-950/50;
+}
+
 .repo-blob-pre {
   @apply m-0 p-4 font-mono text-xs leading-relaxed;
 }

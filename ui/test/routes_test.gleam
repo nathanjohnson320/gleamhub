@@ -1,7 +1,7 @@
 import gleeunit
 import routes.{
-  Blob, Home, NotFound, OrgRepos, RepoMissingOrg, RepoView, Tree,
-  from_pathname,
+  Blob, Home, OrgRepos, RepoMissingOrg, RepoView, Tree,
+  from_pathname, repo_blob_line_path, repo_blob_line_range_path,
 }
 
 pub fn main() {
@@ -30,4 +30,13 @@ pub fn tree_pathname_test() {
 pub fn blob_pathname_test() {
   assert from_pathname("/orgs/stord/repos/app/blob/main/README.md")
     == RepoView(Blob, "stord", "app", "main", "README.md")
+}
+
+pub fn blob_line_path_test() {
+  assert
+    repo_blob_line_path("stord", "app", "main", "src/lib.gleam", 42)
+    == "/orgs/stord/repos/app/blob/main/src/lib.gleam#L42"
+  assert
+    repo_blob_line_range_path("stord", "app", "main", "src/lib.gleam", 10, 25)
+    == "/orgs/stord/repos/app/blob/main/src/lib.gleam#L10-L25"
 }
