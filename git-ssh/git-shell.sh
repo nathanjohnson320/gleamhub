@@ -1,8 +1,13 @@
 #!/bin/sh
 set -eu
 
+if [ -f /etc/gleamhub.env ]; then
+  # shellcheck disable=SC1091
+  . /etc/gleamhub.env
+fi
+
 USER_ID="${GLEAMHUB_USER_ID:?missing GLEAMHUB_USER_ID}"
-API_URL="${GLEAMHUB_API_URL:-http://server:9999}"
+API_URL="${GLEAMHUB_API_URL:-http://host.docker.internal:9999}"
 ROOT="${GIT_REPOS_ROOT:-/data/repos}"
 
 cmd="${SSH_ORIGINAL_COMMAND:-}"

@@ -114,12 +114,13 @@ Clone URL: `ssh://git@{GLEAMHUB_GIT_HOST}:2222/{org}/{repo}.git`
 4. Git over SSH still needs `git-ssh` (Docker is easiest):
 
    ```bash
+   # API must be listening (gleam run in server/, or docker compose up server -d)
    docker compose up git-ssh -d
-   # Ensure server is reachable from git-ssh at GLEAMHUB_API_URL=http://host.docker.internal:9999
-   # on Linux you may need extra_hosts in compose for the server service
+   # git-ssh calls the API at GLEAMHUB_API_URL (default http://host.docker.internal:9999)
+   # Repos are bind-mounted from server/data/repos (same as local gleam run)
    ```
 
-   For full local git, run `docker compose up` so server and git-ssh share the `git-repos` volume.
+   On Linux, if `host.docker.internal` is missing, set `GLEAMHUB_API_URL=http://172.17.0.1:9999` or add `extra_hosts` for git-ssh.
 
 ## End-to-end verification
 

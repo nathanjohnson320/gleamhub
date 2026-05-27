@@ -30,24 +30,22 @@ services:
       GLEAMHUB_GIT_HOST: ${GLEAMHUB_GIT_HOST:-localhost}
       PORT: "9999"
     volumes:
-      - git-repos:/data/repos
+      - ./server/data/repos:/data/repos
     ports:
       - "9999:9999"
 
   git-ssh:
     build:
       context: ./git-ssh
-    depends_on:
-      - server
     environment:
       # Use host.docker.internal when the API runs via local `gleam run` (Mac/Windows Docker Desktop)
       GLEAMHUB_API_URL: ${GLEAMHUB_API_URL:-http://host.docker.internal:9999}
       GIT_REPOS_ROOT: /data/repos
     volumes:
-      - git-repos:/data/repos
+      # Same path as local `gleam run` (GIT_REPOS_ROOT=./data/repos under server/)
+      - ./server/data/repos:/data/repos
     ports:
       - "2222:22"
 
 volumes:
   gleamhub-pg:
-  git-repos:

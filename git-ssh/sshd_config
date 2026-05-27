@@ -9,7 +9,8 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 ChallengeResponseAuthentication no
 PubkeyAuthentication yes
-UsePAM no
+PermitUserEnvironment yes
+# Alpine openssh has no PAM; omit UsePAM (unsupported on this build)
 X11Forwarding no
 AllowTcpForwarding no
 GatewayPorts no
