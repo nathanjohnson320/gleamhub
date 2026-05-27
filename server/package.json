@@ -4,7 +4,8 @@
     "db:down": "dbmate down",
     "db:new": "dbmate new",
     "db:status": "dbmate status",
-    "db:gen:sql": "gleam run -m squirrel"
+    "db:gen:sql": "gleam run -m squirrel",
+    "db:gen:sql:check": "gleam run -m squirrel check"
   },
   "devDependencies": {
     "dbmate": "^2.15.0"

@@ -1,14 +1,19 @@
 import cors_builder as cors
 import gleam/bool
 import gleam/http
+import gleam/option
 import pog
 import wisp
+import ywt/verify_key.{type VerifyKey}
 
 fn cors() {
   cors.new()
   |> cors.allow_origin("http://localhost:5173")
   |> cors.allow_origin("http://127.0.0.1:5173")
+  |> cors.allow_origin("http://localhost:9999")
+  |> cors.allow_origin("http://127.0.0.1:9999")
   |> cors.allow_header("Content-Type")
+  |> cors.allow_header("Authorization")
   |> cors.allow_method(http.Get)
   |> cors.allow_method(http.Post)
   |> cors.allow_method(http.Put)
@@ -17,7 +22,15 @@ fn cors() {
 }
 
 pub type Context {
-  Context(static_directory: String, repo: fn() -> pog.Connection)
+  Context(
+    clerk_key: VerifyKey,
+    static_directory: String,
+    repo: fn() -> pog.Connection,
+    git_repos_root: String,
+    git_host: String,
+    user_id: option.Option(String),
+    email: option.Option(String),
+  )
 }
 
 pub fn middleware(

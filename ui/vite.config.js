@@ -4,4 +4,16 @@ import gleam from "vite-gleam";
 
 export default defineConfig({
   plugins: [gleam(), tailwindcss()],
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:9999",
+        changeOrigin: true,
+      },
+    },
+  },
+  build: {
+    outDir: "../server/priv/static",
+    emptyOutDir: true,
+  },
 });

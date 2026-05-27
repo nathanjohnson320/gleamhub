@@ -1,3 +1,4 @@
+import config.{type Config}
 import gleam/dynamic/decode.{type Decoder}
 import gleam/fetch
 import gleam/http
@@ -5,6 +6,7 @@ import gleam/http/request.{type Request}
 import gleam/http/response.{type Response, Response}
 import gleam/javascript/promise
 import gleam/json.{type Json}
+import gleam/option
 import gleam/result
 import lustre/effect.{type Effect}
 
@@ -40,10 +42,17 @@ import lustre/effect.{type Effect}
 /// construct the request manually using the [gleam_http](https://hexdocs.pm/gleam_http/gleam/http/request.html)
 /// package and then use [`send`](#send) instead.
 ///
-pub fn get(url: String, expect: Expect(msg)) -> Effect(msg) {
+pub fn get(config: Config, url: String, expect: Expect(msg)) -> Effect(msg) {
   effect.from(fn(dispatch) {
     case request.to(url) {
-      Ok(req) -> do_send(req, expect, dispatch)
+      Ok(req) -> {
+        let req = case config.token {
+          option.Some(token) ->
+            request.set_header(req, "Authorization", "Bearer " <> token)
+          option.None -> req
+        }
+        do_send(req, expect, dispatch)
+      }
       Error(_) -> dispatch(expect.run(Error(BadUrl(url))))
     }
   })
@@ -83,15 +92,26 @@ pub fn get(url: String, expect: Expect(msg)) -> Effect(msg) {
 /// construct the request manually using the [gleam_http](https://hexdocs.pm/gleam_http/gleam/http/request.html)
 /// package and then use [`send`](#send) instead.
 ///
-pub fn post(url: String, body: Json, expect: Expect(msg)) -> Effect(msg) {
+pub fn post(
+  config: Config,
+  url: String,
+  body: Json,
+  expect: Expect(msg),
+) -> Effect(msg) {
   effect.from(fn(dispatch) {
     case request.to(url) {
-      Ok(req) ->
+      Ok(req) -> {
+        let req = case config.token {
+          option.Some(token) ->
+            request.set_header(req, "Authorization", "Bearer " <> token)
+          option.None -> req
+        }
         req
         |> request.set_method(http.Post)
         |> request.set_header("Content-Type", "application/json")
         |> request.set_body(json.to_string(body))
         |> do_send(expect, dispatch)
+      }
       Error(_) -> dispatch(expect.run(Error(BadUrl(url))))
     }
   })
@@ -105,6 +125,24 @@ pub fn post(url: String, body: Json, expect: Expect(msg)) -> Effect(msg) {
 /// If you just want to make a simple GET or POST request, you might find either
 /// [`get`](#get) or [`post`](#post) easier to use!
 ///
+pub fn delete(config: Config, url: String, expect: Expect(msg)) -> Effect(msg) {
+  effect.from(fn(dispatch) {
+    case request.to(url) {
+      Ok(req) -> {
+        let req = case config.token {
+          option.Some(token) ->
+            request.set_header(req, "Authorization", "Bearer " <> token)
+          option.None -> req
+        }
+        req
+        |> request.set_method(http.Delete)
+        |> do_send(expect, dispatch)
+      }
+      Error(_) -> dispatch(expect.run(Error(BadUrl(url))))
+    }
+  })
+}
+
 pub fn send(req: Request(String), expect: Expect(msg)) -> Effect(msg) {
   effect.from(do_send(req, expect, _))
 }

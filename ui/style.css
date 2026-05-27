@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+@theme {
+  --color-gh-ink: #0f172a;
+  --color-gh-muted: #64748b;
+  --color-gh-accent: #7c3aed;
+  --color-gh-accent-soft: #ede9fe;
+  --color-gh-surface: #f1f5f9;
+  --color-gh-danger: #dc2626;
+  --color-gh-danger-soft: #fef2f2;
+}
+
+@layer base {
+  body {
+    @apply antialiased text-gh-ink;
+  }
+}

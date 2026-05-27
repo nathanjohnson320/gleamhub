@@ -1,69 +1,43 @@
-\restrict gL3TIr0c2GBYF3KQdMjAErObj4mn9FDxVj6lQg61jqWbdWmQmiTB20vHVVRXaj2
+-- Gleamhub schema for squirrel type inference (keep in sync with migrations)
 
--- Dumped from database version 12.3 (Debian 12.3-1.pgdg100+1)
--- Dumped by pg_dump version 14.19 (Ubuntu 14.19-0ubuntu0.22.04.1)
-
-SET statement_timeout = 0;
-SET lock_timeout = 0;
-SET idle_in_transaction_session_timeout = 0;
-SET client_encoding = 'UTF8';
-SET standard_conforming_strings = on;
-SELECT pg_catalog.set_config('search_path', '', false);
-SET check_function_bodies = false;
-SET xmloption = content;
-SET client_min_messages = warning;
-SET row_security = off;
-
-SET default_tablespace = '';
-
-SET default_table_access_method = heap;
-
---
--- Name: items; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.items (
-    id character varying(64) NOT NULL,
-    title character varying(255) NOT NULL,
-    status character varying(255) NOT NULL
+CREATE TABLE users (
+  id varchar(255) PRIMARY KEY NOT NULL,
+  display_name varchar(255),
+  email varchar(255),
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
-
---
--- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.schema_migrations (
-    version character varying(128) NOT NULL
+CREATE TABLE organizations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug varchar(64) NOT NULL UNIQUE,
+  name varchar(255) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE organization_members (
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id varchar(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role varchar(32) NOT NULL,
+  PRIMARY KEY (organization_id, user_id)
+);
 
---
--- Name: items items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
+CREATE TABLE repositories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name varchar(64) NOT NULL,
+  description text,
+  disk_path varchar(512) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (organization_id, name)
+);
 
-ALTER TABLE ONLY public.items
-    ADD CONSTRAINT items_pkey PRIMARY KEY (id);
-
-
---
--- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.schema_migrations
-    ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
-
-
---
--- PostgreSQL database dump complete
---
-
-\unrestrict gL3TIr0c2GBYF3KQdMjAErObj4mn9FDxVj6lQg61jqWbdWmQmiTB20vHVVRXaj2
-
-
---
--- Dbmate schema migrations
---
-
-INSERT INTO public.schema_migrations (version) VALUES
-    ('20240511203036');
+CREATE TABLE ssh_public_keys (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id varchar(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title varchar(255) NOT NULL,
+  public_key text NOT NULL,
+  key_blob text NOT NULL,
+  fingerprint varchar(255) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, fingerprint)
+);

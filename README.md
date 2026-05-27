@@ -1,162 +1,179 @@
-# wisp_lustre_template
+# Gleamhub
 
-A full-stack web application template built with [Gleam](https://gleam.run/), featuring:
+Gleam-native Git hosting MVP — multi-tenant platform (Tier 1): one deploy, all organizations.
 
-- **Backend**: [Wisp](https://hexdocs.pm/wisp/) web framework running on Erlang/OTP
-- **Frontend**: [Lustre](https://hexdocs.pm/lustre/) reactive UI framework compiled to JavaScript
-- **Database**: PostgreSQL with [pog](https://hexdocs.pm/pog/) for database access
-- **Example App**: A complete todo list application demonstrating CRUD operations
+- **Web**: Clerk sign-in, Lustre UI, Wisp API
+- **Git**: SSH clone/push/pull to bare repos on disk at `{org_slug}/{repo}.git`
+- **Auth**: Clerk JWT for `/api/*`; SSH public keys for git (no Bearer on git)
 
-## Project Structure
+## Architecture
 
-- `common/` - Shared Gleam library (multi-target)
-  - Shared data models and types
-  - JSON encoders/decoders
-  - Business logic used by both frontend and backend
-  - Example: `Item` type with status management
-- `server/` - Backend Gleam project (Erlang target)
-  - REST API endpoints
-  - Database migrations with dbmate
-  - SQL query generation with Squirrel
-  - Example routes for todo items
-- `ui/` - Frontend Gleam project (JavaScript target)
-  - Lustre-based reactive UI
-  - HTTP client using `lustre_http`
-  - Routing with `modem`
-  - Development server with Vite
+```mermaid
+flowchart TB
+  Browser[Lustre UI]
+  GitCli[git over SSH]
+  Wisp[Wisp API]
+  SSH[git-ssh]
+  PG[(Postgres)]
+  Vol[git-repos volume]
+
+  Browser -->|JWT| Wisp
+  GitCli --> SSH
+  Wisp --> PG
+  Wisp --> Vol
+  SSH -->|internal HTTP| Wisp
+  SSH --> Vol
+```
+
+Repos live at `$GIT_REPOS_ROOT/{org_slug}/{repo}.git` (default `./data/repos` locally, `/data/repos` in Docker).
+
+Clone URL: `ssh://git@{GLEAMHUB_GIT_HOST}:2222/{org}/{repo}.git`
+
+## Project structure
+
+| Path | Role |
+|------|------|
+| `common/` | Shared types (if needed) |
+| `server/` | Wisp API, Postgres (pog), migrations, internal SSH routes |
+| `ui/` | Lustre + Vite + Clerk |
+| `git-ssh/` | OpenSSH + scripts calling internal API |
+| `docker-compose.yml` | Postgres + server + git-ssh |
 
 ## Prerequisites
 
-- [Gleam](https://gleam.run/getting-started/) installed
-- [Erlang/OTP](https://www.erlang.org/downloads) installed
-- [PostgreSQL](https://www.postgresql.org/download/) installed and running
-- [Node.js](https://nodejs.org/) and npm installed
-- [dbmate](https://github.com/amacneil/dbmate) for database migrations (optional, but recommended)
+- [Gleam](https://gleam.run/getting-started/) and Erlang/OTP
+- [Node.js](https://nodejs.org/) (UI + dbmate)
+- [Docker](https://www.docker.com/) (optional, recommended for git-ssh + Postgres)
+- A [Clerk](https://clerk.com/) application (same pattern as `estonian`)
 
-## Getting Started
+## Quick start (Docker)
 
-### 1. Database Setup
+1. Copy Clerk env from **estonian** (same app for both projects):
 
-Set up the database URL and secret key in a `.env` file (or environment variables):
+   ```bash
+   cp server/.env.example server/.env
+   cp ui/.env.example ui/.env
+   # Or copy directly:
+   grep CLERK_JWKS ../estonian/server/.env >> server/.env
+   grep VITE_CLERK ../estonian/ui/.env >> ui/.env
+   ```
 
-```bash
-DATABASE_URL=postgres://user:password@localhost:5432/database_name
-SECRET_KEY_BASE=your-secret-key-here
-PORT=9999
-```
+   Estonian pattern: `CLERK_JWKS` (single RSA JWK) in `server/.env`, `VITE_CLERK_PUBLISHABLE_KEY` in `ui/.env`. Gleamhub uses the same `verify_key.decoder()` and `clerk` middleware as estonian.
 
-Make sure PostgreSQL is installed and running, and create a database for your application:
+2. Build and start the platform:
 
-```bash
-createdb database_name
-```
+   ```bash
+   docker compose up --build
+   ```
 
-Run database migrations:
+   - API + SPA: http://localhost:9999
+   - Git SSH: `localhost:2222` (user `git`)
+   - Migrations run automatically on server start
 
-```bash
-cd server
-npm install  # Installs dbmate
-npm run db:up
-```
+3. For UI development against the API, in another terminal:
 
-### 2. Backend Server
+   ```bash
+   cd ui && npm install && npm run dev
+   ```
 
-Start the backend server:
+   Visit http://localhost:5173 (CORS allows 5173 → API on 9999).
 
-```bash
-cd server
-gleam run
-```
+## Local development (without Docker server)
 
-The server will start on port 9999 (or the port specified in `PORT`).
+1. Start Postgres (or `docker compose up postgres -d`). Compose publishes **5432** to the host so local `gleam run` can use `DATABASE_URL=...@127.0.0.1:5432/gleamhub`.
 
-### 3. Frontend Development
+2. Migrate and run the server:
 
-In a separate terminal, start the frontend development server:
+   ```bash
+   cd server
+   cp .env.example .env   # set CLERK_JWKS
+   npm install
+   npm run db:up
+   gleam run
+   ```
 
-```bash
-cd ui
-npm install
-npm run dev
-```
+   SQL queries live in `server/src/app/sql/*.sql`. After changing them, regenerate typed pog code:
 
-Visit `http://localhost:5173` (or the port Vite assigns) to see the application.
+   ```bash
+   cd server
+   npm run db:gen:sql    # gleam run -m squirrel → src/app/sql.gleam
+   ```
 
-### 4. Production Build
+   Requires `DATABASE_URL` (from `.env`) and an up-to-date schema (`npm run db:up`).
 
-Build the frontend for production:
+3. Build UI into `server/priv/static` or use Vite dev:
 
-```bash
-cd ui
-npm run build
-```
+   ```bash
+   cd ui
+   cp .env.example .env
+   npm install
+   npm run dev          # dev server
+   # or: npm run build  # production assets for Wisp
+   ```
 
-The built assets will be in `ui/build/prod/javascript/`. The server serves static files from `server/priv/static/`.
+4. Git over SSH still needs `git-ssh` (Docker is easiest):
 
-## Features
+   ```bash
+   docker compose up git-ssh -d
+   # Ensure server is reachable from git-ssh at GLEAMHUB_API_URL=http://host.docker.internal:9999
+   # on Linux you may need extra_hosts in compose for the server service
+   ```
 
-- ✅ RESTful API with Wisp
-- ✅ Database access with pog (PostgreSQL support)
-- ✅ SQL query generation with Squirrel
-- ✅ Type-safe frontend with Lustre
-- ✅ HTTP client with `lustre_http`
-- ✅ Client-side routing with `modem`
-- ✅ Database migrations with dbmate
-- ✅ CORS support
-- ✅ Development tooling (Vite for frontend, Gleam LSP support)
+   For full local git, run `docker compose up` so server and git-ssh share the `git-repos` volume.
 
-## Example API Endpoints
+## End-to-end verification
 
-The template includes example todo item endpoints:
+1. Open http://localhost:9999 (or Vite on 5173) and sign in with Clerk.
+2. **Organizations** → create org (e.g. `acme`).
+3. Open the org → **Create repository** (e.g. `demo`).
+4. **SSH keys** → paste your `~/.ssh/id_ed25519.pub` (or generate one).
+5. Clone and push:
 
-- `GET /items` - List all items
-- `POST /items` - Create a new item
-- `PATCH /items/:id` - Update an item
-- `DELETE /items/:id` - Delete an item
+   ```bash
+   git clone ssh://git@localhost:2222/acme/demo.git
+   cd demo
+   echo "# hello" >> README.md
+   git add README.md && git commit -m "init"
+   git push origin main
+   ```
 
-## Development
+6. Confirm bare repo on disk:
 
-### Running Tests
+   ```bash
+   ls -la server/data/repos/acme/demo.git   # local server
+   # or inside compose:
+   docker compose exec server ls -la /data/repos/acme/demo.git
+   ```
 
-```bash
-# Backend tests
-cd server
-gleam test
+## API surface
 
-# Frontend tests
-cd ui
-gleam test
-```
+| Route | Auth |
+|-------|------|
+| `GET/POST /api/orgs` | Clerk JWT |
+| `GET /api/orgs/:slug` | Clerk JWT + member |
+| `GET/POST /api/orgs/:slug/repos` | Clerk JWT + member |
+| `GET/POST/DELETE /api/ssh-keys` | Clerk JWT |
+| `GET /internal/ssh/authorized_keys?k=` | Docker network only |
+| `GET /internal/ssh/access?org=&repo=&user_id=&op=` | Docker network only |
 
-### Database Migrations
+Git ops: org members with a registered key can **read** (`upload-pack`) and **write** (`receive-pack`) to all repos in that org (MVP — no per-repo ACL).
 
-```bash
-cd server
-npm run db:new <migration_name>  # Create new migration
-npm run db:up                     # Run pending migrations
-npm run db:down                    # Rollback last migration
-npm run db:status                  # Check migration status
-```
+## Environment variables
 
-### SQL Query Generation
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SECRET_KEY_BASE` | (required) | Wisp session signing |
+| `DATABASE_URL` | (required) | Postgres connection |
+| `CLERK_JWKS` | required | Single RSA JWK JSON — copy from `estonian/server/.env` |
+| `GIT_REPOS_ROOT` | `./data/repos` | Bare repo root |
+| `GLEAMHUB_GIT_HOST` | `localhost` | Host in clone URLs |
+| `PORT` | `9999` | HTTP port |
+| `VITE_CLERK_PUBLISHABLE_KEY` | (required in UI) | Clerk frontend key |
 
-This project uses [Squirrel](https://github.com/giacomocavalieri/squirrel) to generate type-safe Gleam functions from SQL files. SQL queries are stored in `server/src/app/sql/` and the generated Gleam code is in `server/src/app/sql.gleam`.
+## Deployment model (Tier 1)
 
-After creating or modifying SQL files, regenerate the Gleam code:
-
-```bash
-cd server
-npm run db:gen:sql
-```
-
-## Learn More
-
-- [Gleam Language Documentation](https://gleam.run/documentation/)
-- [Wisp Framework](https://hexdocs.pm/wisp/)
-- [Lustre Framework](https://hexdocs.pm/lustre/)
-- [pog Database Library](https://hexdocs.pm/pog/)
-- [Squirrel SQL Generator](https://github.com/giacomocavalieri/squirrel)
+Single platform deployment: one Wisp process, one git-ssh service, one Postgres, one volume. Updating the image updates every organization. Dedicated per-org stacks (Tier 2) are out of scope for this MVP.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+MIT — see [LICENSE.md](LICENSE.md).

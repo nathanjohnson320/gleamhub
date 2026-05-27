@@ -3,11 +3,15 @@ import app/web.{Context}
 import dot_env
 import dot_env/env
 import gleam/erlang/process
+import gleam/json
+import gleam/option
 import gleam/otp/static_supervisor as supervisor
 import mist
 import pog
+import simplifile
 import wisp
 import wisp/wisp_mist
+import ywt/verify_key
 
 const app_name = "server"
 
@@ -19,6 +23,20 @@ pub fn main() {
 
   let assert Ok(secret_key_base) = env.get_string("SECRET_KEY_BASE")
   let assert Ok(db_url) = env.get_string("DATABASE_URL")
+
+  let assert Ok(clerk_jwks) = env.get_string("CLERK_JWKS")
+  let assert Ok(clerk_key) = json.parse(clerk_jwks, verify_key.decoder())
+
+  let git_repos_root = case env.get_string("GIT_REPOS_ROOT") {
+    Ok(root) -> root
+    Error(_) -> "./data/repos"
+  }
+
+  let git_host = case env.get_string("GLEAMHUB_GIT_HOST") {
+    Ok(host) -> host
+    Error(_) -> "localhost"
+  }
+
   let port = case env.get_int("PORT") {
     Ok(port) -> port
     Error(_) -> 9999
@@ -33,15 +51,22 @@ pub fn main() {
     |> pog.supervised
 
   let ctx =
-    Context(static_directory: static_directory(), repo: fn() -> pog.Connection {
-      pog.named_connection(pool_name)
-    })
+    Context(
+      clerk_key: clerk_key,
+      static_directory: static_directory(),
+      repo: fn() -> pog.Connection { pog.named_connection(pool_name) },
+      git_repos_root: git_repos_root,
+      git_host: git_host,
+      user_id: option.None,
+      email: option.None,
+    )
 
   let handler = router.handle_request(_, ctx)
 
   let web =
     wisp_mist.handler(handler, secret_key_base)
     |> mist.new
+    |> mist.bind("0.0.0.0")
     |> mist.port(port)
     |> mist.supervised()
 
@@ -55,6 +80,17 @@ pub fn main() {
 }
 
 fn static_directory() {
-  let assert Ok(priv_directory) = wisp.priv_directory(app_name)
-  priv_directory <> "/static"
+  case env.get_string("STATIC_DIRECTORY") {
+    Ok(dir) -> dir
+    Error(_) -> {
+      let dev_static = "./priv/static"
+      case simplifile.read(dev_static <> "/index.html") {
+        Ok(_) -> dev_static
+        Error(_) -> {
+          let assert Ok(priv_directory) = wisp.priv_directory(app_name)
+          priv_directory <> "/static"
+        }
+      }
+    }
+  }
 }

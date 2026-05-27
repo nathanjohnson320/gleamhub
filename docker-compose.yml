@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gleamhub
+    volumes:
+      - gleamhub-pg:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gleamhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-secret-change-me-in-production}
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/gleamhub?sslmode=disable
+      CLERK_JWKS: ${CLERK_JWKS}
+      GIT_REPOS_ROOT: /data/repos
+      GLEAMHUB_GIT_HOST: ${GLEAMHUB_GIT_HOST:-localhost}
+      PORT: "9999"
+    volumes:
+      - git-repos:/data/repos
+    ports:
+      - "9999:9999"
+
+  git-ssh:
+    build:
+      context: ./git-ssh
+    depends_on:
+      - server
+    environment:
+      # Use host.docker.internal when the API runs via local `gleam run` (Mac/Windows Docker Desktop)
+      GLEAMHUB_API_URL: ${GLEAMHUB_API_URL:-http://host.docker.internal:9999}
+      GIT_REPOS_ROOT: /data/repos
+    volumes:
+      - git-repos:/data/repos
+    ports:
+      - "2222:22"
+
+volumes:
+  gleamhub-pg:
+  git-repos:

@@ -13,6 +13,7 @@
     "vite-gleam": "^1.7.1"
   },
   "dependencies": {
+    "@clerk/clerk-js": "^5.0.0",
     "@tailwindcss/vite": "^4.1.17",
     "tailwindcss": "^4.1.17"
   }
