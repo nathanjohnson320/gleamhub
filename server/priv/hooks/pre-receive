@@ -1,0 +1,39 @@
+#!/bin/sh
+set -eu
+
+API_URL="${GLEAMHUB_API_URL:-http://host.docker.internal:9999}"
+USER_ID="${GLEAMHUB_USER_ID:?missing GLEAMHUB_USER_ID}"
+ORG="${GLEAMHUB_ORG:?missing GLEAMHUB_ORG}"
+REPO="${GLEAMHUB_REPO:?missing GLEAMHUB_REPO}"
+
+zero="0000000000000000000000000000000000000000"
+
+while read -r oldrev newrev refname; do
+  case "$refname" in
+    refs/heads/*) ;;
+    *) continue ;;
+  esac
+
+  status=$(curl -sf -o /tmp/gleamhub-ref-update.json -w '%{http_code}' --get \
+    "$API_URL/internal/ssh/ref-update" \
+    --data-urlencode "org=$ORG" \
+    --data-urlencode "repo=$REPO" \
+    --data-urlencode "user_id=$USER_ID" \
+    --data-urlencode "oldrev=$oldrev" \
+    --data-urlencode "newrev=$newrev" \
+    --data-urlencode "ref=$refname" || printf '%s' "000")
+
+  if [ "$status" != "200" ]; then
+    if [ -f /tmp/gleamhub-ref-update.json ]; then
+      msg=$(sed -n 's/.*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /tmp/gleamhub-ref-update.json | head -n 1)
+      if [ -n "$msg" ]; then
+        echo "fatal: $msg" >&2
+        exit 1
+      fi
+    fi
+    echo "fatal: push to protected branch denied" >&2
+    exit 1
+  fi
+done
+
+exit 0

@@ -125,6 +125,31 @@ pub fn post(
 /// If you just want to make a simple GET or POST request, you might find either
 /// [`get`](#get) or [`post`](#post) easier to use!
 ///
+pub fn put(
+  config: Config,
+  url: String,
+  body: Json,
+  expect: Expect(msg),
+) -> Effect(msg) {
+  effect.from(fn(dispatch) {
+    case request.to(url) {
+      Ok(req) -> {
+        let req = case config.token {
+          option.Some(token) ->
+            request.set_header(req, "Authorization", "Bearer " <> token)
+          option.None -> req
+        }
+        req
+        |> request.set_method(http.Put)
+        |> request.set_header("Content-Type", "application/json")
+        |> request.set_body(json.to_string(body))
+        |> do_send(expect, dispatch)
+      }
+      Error(_) -> dispatch(expect.run(Error(BadUrl(url))))
+    }
+  })
+}
+
 pub fn delete(config: Config, url: String, expect: Expect(msg)) -> Effect(msg) {
   effect.from(fn(dispatch) {
     case request.to(url) {

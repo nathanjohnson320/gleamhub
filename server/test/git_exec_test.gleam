@@ -86,8 +86,23 @@ pub fn merge_request_git_ops_test() {
   let assert Ok(check) = git_exec.can_merge(git_dir, "main", "feature")
   let assert True = check.mergeable
 
-  let assert Ok(sha) = git_exec.merge_branches(git_dir, "main", "feature")
+  let assert Ok(sha) =
+    git_exec.merge_branches(git_dir, "main", "feature", git_exec.MergeCommit, "")
   let assert True = sha != ""
 
+  cleanup_fixture_repo(git_dir)
+}
+
+pub fn squash_merge_fixture_test() {
+  let git_dir = setup_fixture_repo()
+  let assert Ok(sha) =
+    git_exec.merge_branches(
+      git_dir,
+      "main",
+      "feature",
+      git_exec.Squash,
+      "Squash feature into main",
+    )
+  let assert True = sha != ""
   cleanup_fixture_repo(git_dir)
 }

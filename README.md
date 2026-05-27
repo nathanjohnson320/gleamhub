@@ -93,6 +93,16 @@ After pushing a feature branch over SSH:
 
 The server stores MR metadata in Postgres; diffs and merges run live against the bare repo (`git merge-base`, `git diff`, worktree merge + `update-ref`).
 
+**Merge methods:** On an open MR, choose **Create merge commit** (default) or **Squash and merge** before confirming. Squash applies `git merge --squash` and a single commit on the target branch.
+
+### Protected branches
+
+Repository **owners** can protect branch names on the repo home page (no branches are protected by default).
+
+- **GET/PUT** `/api/orgs/:org/repos/:repo/protected-branches` — members can read; only owners can update the list.
+- **SSH push:** A `pre-receive` hook calls the internal ref-update API. Direct pushes to protected branches are denied (including force-push and branch deletion). Tags are not checked in this MVP.
+- **Merge requests:** Server-side merges use `git update-ref` and do not run `pre-receive`, so MR merge remains the supported way to land changes on protected branches.
+
 ---
 
 ## Local development (Gleam + Vite)

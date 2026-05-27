@@ -1335,3 +1335,114 @@ ON CONFLICT (id) DO UPDATE SET
   |> pog.returning(decoder)
   |> pog.execute(db)
 }
+
+pub type PbListRow {
+  PbListRow(branch_name: String)
+}
+
+pub fn pb_list(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+) -> Result(pog.Returned(PbListRow), pog.QueryError) {
+  let decoder = {
+    use branch_name <- decode.field(0, decode.string)
+    decode.success(PbListRow(branch_name:))
+  }
+
+  "SELECT pb.branch_name
+FROM protected_branches pb
+INNER JOIN repositories r ON r.id = pb.repository_id
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE o.slug = $1 AND r.name = $2
+ORDER BY pb.branch_name;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+pub fn pb_delete_for_repo(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+) -> Result(pog.Returned(Nil), pog.QueryError) {
+  let decoder = decode.map(decode.dynamic, fn(_) { Nil })
+
+  "DELETE FROM protected_branches pb
+USING repositories r
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE pb.repository_id = r.id
+  AND o.slug = $1
+  AND r.name = $2;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+pub type PbInsertRow {
+  PbInsertRow(branch_name: String)
+}
+
+pub fn pb_insert(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+  arg_3: String,
+) -> Result(pog.Returned(PbInsertRow), pog.QueryError) {
+  let decoder = {
+    use branch_name <- decode.field(0, decode.string)
+    decode.success(PbInsertRow(branch_name:))
+  }
+
+  "INSERT INTO protected_branches (repository_id, branch_name)
+SELECT r.id, $3
+FROM repositories r
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE o.slug = $1 AND r.name = $2
+RETURNING branch_name;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.parameter(pog.text(arg_3))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+pub type PbIsProtectedRow {
+  PbIsProtectedRow(found: Int)
+}
+
+pub fn pb_is_protected(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+  arg_3: String,
+) -> Result(pog.Returned(PbIsProtectedRow), pog.QueryError) {
+  let decoder = {
+    use found <- decode.field(0, decode.int)
+    decode.success(PbIsProtectedRow(found:))
+  }
+
+  "SELECT 1
+FROM protected_branches pb
+INNER JOIN repositories r ON r.id = pb.repository_id
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE o.slug = $1
+  AND r.name = $2
+  AND pb.branch_name = $3
+LIMIT 1;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.parameter(pog.text(arg_3))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}

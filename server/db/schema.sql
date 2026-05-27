@@ -1,4 +1,4 @@
-\restrict fJg9vvUJxM9rcIuli9R6CRgSoQJ1Q2eS6Hb1pHNaX9QSjVykSuJEjfe0msNmLG5
+\restrict bMM9bAwQRtmJ4dbORO5NbMQ7hNJdDRFq06eVWL1OnRj0YeIedXuFRs2gsLvuwni
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 18.3
@@ -88,6 +88,18 @@ CREATE TABLE public.organizations (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     slug character varying(64) NOT NULL,
     name character varying(255) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: protected_branches; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.protected_branches (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    repository_id uuid NOT NULL,
+    branch_name character varying(255) NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
@@ -199,6 +211,22 @@ ALTER TABLE ONLY public.organizations
 
 
 --
+-- Name: protected_branches protected_branches_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.protected_branches
+    ADD CONSTRAINT protected_branches_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: protected_branches protected_branches_repository_id_branch_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.protected_branches
+    ADD CONSTRAINT protected_branches_repository_id_branch_name_key UNIQUE (repository_id, branch_name);
+
+
+--
 -- Name: repositories repositories_organization_id_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -275,6 +303,13 @@ CREATE INDEX organization_members_user_id_idx ON public.organization_members USI
 
 
 --
+-- Name: protected_branches_repository_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX protected_branches_repository_id_idx ON public.protected_branches USING btree (repository_id);
+
+
+--
 -- Name: repositories_organization_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -345,6 +380,14 @@ ALTER TABLE ONLY public.organization_members
 
 
 --
+-- Name: protected_branches protected_branches_repository_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.protected_branches
+    ADD CONSTRAINT protected_branches_repository_id_fkey FOREIGN KEY (repository_id) REFERENCES public.repositories(id) ON DELETE CASCADE;
+
+
+--
 -- Name: repositories repositories_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -364,7 +407,7 @@ ALTER TABLE ONLY public.ssh_public_keys
 -- PostgreSQL database dump complete
 --
 
-\unrestrict fJg9vvUJxM9rcIuli9R6CRgSoQJ1Q2eS6Hb1pHNaX9QSjVykSuJEjfe0msNmLG5
+\unrestrict bMM9bAwQRtmJ4dbORO5NbMQ7hNJdDRFq06eVWL1OnRj0YeIedXuFRs2gsLvuwni
 
 
 --
@@ -374,4 +417,5 @@ ALTER TABLE ONLY public.ssh_public_keys
 INSERT INTO public.schema_migrations (version) VALUES
     ('20240511203036'),
     ('20260527120000'),
-    ('20260528120000');
+    ('20260528120000'),
+    ('20260529120000');

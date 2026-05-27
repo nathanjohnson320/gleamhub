@@ -1,5 +1,6 @@
 import api.{
-  type BlobView, type Readme, type RepoDetail, type TreeEntry, type TreeListing,
+  type BlobView, type Org, type Readme, type RepoDetail, type TreeEntry,
+  type TreeListing,
 }
 import components
 import config.{type Config}
@@ -12,11 +13,13 @@ import lustre/attribute as attr
 import lustre/effect.{type Effect}
 import lustre/element.{type Element, text, unsafe_raw_html}
 import lustre/element/html.{
-  a, div, h2, option, p, select, span, table, tbody, td, th, thead, tr,
+  a, button, code, div, h2, h3, input, li, option, p, select, span, table, tbody, td,
+  th, thead, tr, ul,
 }
 import lustre/event
 import lustre_http
 import blob_lines
+import clipboard
 import highlight
 import markdown
 import modem
@@ -36,6 +39,11 @@ pub type Model {
     blob: option.Option(BlobView),
     loading: Bool,
     empty_repo: Bool,
+    org_role: option.Option(String),
+    protected_branches: List(String),
+    protected_input: String,
+    saving_protected: Bool,
+    clone_copied: Bool,
     error: option.Option(String),
   )
 }
@@ -47,6 +55,13 @@ pub type Msg {
   LoadedTree(Result(TreeListing, lustre_http.HttpError))
   LoadedBlob(Result(BlobView, lustre_http.HttpError))
   BranchChanged(String)
+  CopyCloneUrl
+  OrgLoaded(Result(Org, lustre_http.HttpError))
+  ProtectedBranchesLoaded(Result(List(String), lustre_http.HttpError))
+  ProtectedInputChanged(String)
+  AddProtectedBranch
+  RemoveProtectedBranch(String)
+  ProtectedBranchesSaved(Result(List(String), lustre_http.HttpError))
 }
 
 pub fn init(
@@ -69,6 +84,11 @@ pub fn init(
     blob: option.None,
     loading: True,
     empty_repo: False,
+    org_role: option.None,
+    protected_branches: [],
+    protected_input: "",
+    saving_protected: False,
+    clone_copied: False,
     error: option.None,
   )
 }
@@ -81,6 +101,7 @@ pub fn on_load(config: Config, model: Model) -> Effect(Msg) {
       effect.batch([
         load_detail(config, model),
         load_branches(config, model),
+        load_org(config, model),
       ])
   }
 }
@@ -98,6 +119,39 @@ fn home_content_effects(config: Config, model: Model) -> Effect(Msg) {
 
 fn api_base(config: Config, model: Model) -> String {
   config.api_url <> "/api/orgs/" <> model.org_slug <> "/repos/" <> model.repo_name
+}
+
+fn load_org(config: Config, model: Model) -> Effect(Msg) {
+  lustre_http.get(
+    config,
+    config.api_url <> "/api/orgs/" <> model.org_slug,
+    lustre_http.expect_json(api.org_decoder(), OrgLoaded),
+  )
+}
+
+fn load_protected_branches(config: Config, model: Model) -> Effect(Msg) {
+  lustre_http.get(
+    config,
+    api_base(config, model) <> "/protected-branches",
+    lustre_http.expect_json(api.protected_branches_decoder(), ProtectedBranchesLoaded),
+  )
+}
+
+fn save_protected_branches(
+  config: Config,
+  model: Model,
+  branches: List(String),
+) -> Effect(Msg) {
+  lustre_http.put(
+    config,
+    api_base(config, model) <> "/protected-branches",
+    api.protected_branches_body(branches),
+    lustre_http.expect_json(api.protected_branches_decoder(), ProtectedBranchesSaved),
+  )
+}
+
+fn is_owner(model: Model) -> Bool {
+  model.org_role == option.Some("owner")
 }
 
 fn load_detail(config: Config, model: Model) -> Effect(Msg) {
@@ -178,6 +232,7 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
           detail: option.Some(detail),
           ref:,
           loading: False,
+          clone_copied: False,
           error: option.None,
         )
       #(
@@ -242,6 +297,14 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
       Model(..model, error: option.Some("Could not load file"), loading: False),
       effect.none(),
     )
+    CopyCloneUrl -> {
+      let url = case model.detail {
+        option.Some(d) -> d.clone_url
+        option.None -> ""
+      }
+      let _ = clipboard.copy(url)
+      #(Model(..model, clone_copied: True), effect.none())
+    }
     BranchChanged(new_ref) -> {
       case model.mode {
         Home -> #(
@@ -264,6 +327,77 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
         )
       }
     }
+    OrgLoaded(Ok(org)) -> #(
+      Model(..model, org_role: org.role),
+      case org.role {
+        option.Some("owner") -> load_protected_branches(config, model)
+        _ -> effect.none()
+      },
+    )
+    OrgLoaded(Error(_)) -> #(model, effect.none())
+    ProtectedBranchesLoaded(Ok(branches)) -> #(
+      Model(..model, protected_branches: branches),
+      effect.none(),
+    )
+    ProtectedBranchesLoaded(Error(_)) -> #(model, effect.none())
+    ProtectedInputChanged(value) -> #(
+      Model(..model, protected_input: value),
+      effect.none(),
+    )
+    AddProtectedBranch -> {
+      let name = string.trim(model.protected_input)
+      case name {
+        "" -> #(model, effect.none())
+        _ ->
+          case list.contains(model.protected_branches, name) {
+            True -> #(
+              Model(..model, error: option.Some("Branch is already protected")),
+              effect.none(),
+            )
+            False -> {
+              let branches = list.append(model.protected_branches, [name])
+              #(
+                Model(
+                  ..model,
+                  protected_branches: branches,
+                  protected_input: "",
+                  saving_protected: True,
+                  error: option.None,
+                ),
+                save_protected_branches(config, model, branches),
+              )
+            }
+          }
+      }
+    }
+    RemoveProtectedBranch(name) -> {
+      let branches =
+        list.filter(model.protected_branches, fn(b) { b != name })
+      #(
+        Model(..model, protected_branches: branches, saving_protected: True),
+        save_protected_branches(config, model, branches),
+      )
+    }
+    ProtectedBranchesSaved(Ok(branches)) -> #(
+      Model(..model, protected_branches: branches, saving_protected: False),
+      effect.none(),
+    )
+    ProtectedBranchesSaved(Error(lustre_http.OtherError(403, _))) -> #(
+      Model(
+        ..model,
+        saving_protected: False,
+        error: option.Some("Only organization owners can change protected branches"),
+      ),
+      effect.none(),
+    )
+    ProtectedBranchesSaved(Error(_)) -> #(
+      Model(
+        ..model,
+        saving_protected: False,
+        error: option.Some("Could not save protected branches"),
+      ),
+      effect.none(),
+    )
   }
 }
 
@@ -431,12 +565,140 @@ fn branch_select(model: Model) -> Element(Msg) {
   )
 }
 
+fn protected_branches_card(model: Model) -> Element(Msg) {
+  case is_owner(model) {
+    False -> text("")
+    True ->
+      div([attr.class(components.card <> " mb-6")], [
+        h3([attr.class("mb-2 text-sm font-semibold text-gh-ink")], [
+          text("Protected branches"),
+        ]),
+        p([attr.class("mb-3 text-sm text-gh-muted")], [
+          text(
+            "Direct pushes to these branches are blocked over SSH; use merge requests to update them.",
+          ),
+        ]),
+        case model.protected_branches {
+          [] -> text("")
+          branches ->
+            ul(
+              [attr.class("mb-3 space-y-2")],
+              list.map(branches, fn(branch) {
+                li(
+                  [attr.class("flex items-center justify-between gap-2 text-sm")],
+                  [
+                    span([attr.class("font-mono text-gh-ink")], [text(branch)]),
+                    button(
+                      [
+                        attr.type_("button"),
+                        attr.class(components.btn_secondary <> " !py-1 !text-xs"),
+                        attr.disabled(model.saving_protected),
+                        event.on_click(RemoveProtectedBranch(branch)),
+                      ],
+                      [text("Remove")],
+                    ),
+                  ],
+                )
+              }),
+            )
+        },
+        div([attr.class("flex flex-wrap gap-2")], [
+          input([
+            attr.type_("text"),
+            attr.placeholder("Branch name"),
+            attr.value(model.protected_input),
+            attr.class(components.input <> " !max-w-xs"),
+            event.on_input(ProtectedInputChanged),
+          ]),
+          button(
+            [
+              attr.type_("button"),
+              attr.class(components.btn_primary),
+              attr.disabled(model.saving_protected),
+              event.on_click(AddProtectedBranch),
+            ],
+            [text("Add")],
+          ),
+        ]),
+      ])
+  }
+}
+
+fn repo_header(model: Model, clone_url: String) -> Element(Msg) {
+  div(
+    [
+      attr.class(
+        "repo-header mb-6 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/5",
+      ),
+    ],
+    [
+      div(
+        [attr.class("flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between")],
+        [
+          div([attr.class("min-w-0")], [
+            p([attr.class("text-sm font-medium text-gh-muted")], [text(model.org_slug)]),
+            h2(
+              [attr.class("mt-0.5 text-2xl font-bold tracking-tight text-gh-ink")],
+              [text(model.repo_name)],
+            ),
+          ]),
+          a(
+            [
+              attr.href(routes.mr_list_path(model.org_slug, model.repo_name)),
+              attr.class(components.btn_secondary <> " shrink-0"),
+            ],
+            [text("Merge requests")],
+          ),
+        ],
+      ),
+      case clone_url {
+        "" -> text("")
+        url -> clone_url_block(url, model.clone_copied)
+      },
+    ],
+  )
+}
+
+fn clone_url_block(url: String, copied: Bool) -> Element(Msg) {
+  let copy_label = case copied {
+    True -> "Copied!"
+    False -> "Copy"
+  }
+  div([attr.class("mt-1 border-t border-slate-100 pt-4")], [
+    p([attr.class("mb-2 text-xs font-semibold uppercase tracking-wide text-gh-muted")], [
+      text("Clone via SSH"),
+    ]),
+    div([attr.class("flex flex-col gap-2 sm:flex-row sm:items-stretch")], [
+      code(
+        [
+          attr.class(
+            "min-w-0 flex-1 break-all rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-xs text-gh-ink sm:text-sm",
+          ),
+        ],
+        [text(url)],
+      ),
+      button(
+        [
+          attr.type_("button"),
+          attr.class(components.btn_secondary <> " shrink-0 sm:!px-5"),
+          event.on_click(CopyCloneUrl),
+        ],
+        [text(copy_label)],
+      ),
+    ]),
+  ])
+}
+
 fn toolbar(model: Model) -> Element(Msg) {
   div(
-    [attr.class("repo-toolbar mb-4 flex flex-col gap-3 sm:flex-row sm:items-center")],
+    [
+      attr.class(
+        "repo-toolbar mb-4 flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm ring-1 ring-slate-900/5 sm:flex-row sm:items-center",
+      ),
+    ],
     [
       div([attr.class("flex items-center gap-2")], [
-        span([attr.class("text-sm text-gh-muted")], [text("Branch:")]),
+        span([attr.class("text-sm font-medium text-gh-muted")], [text("Branch")]),
         branch_select(model),
       ]),
       path_breadcrumb(model),
@@ -475,7 +737,6 @@ pub fn view(model: Model) -> Element(Msg) {
     option.Some(d) -> d.clone_url
     option.None -> ""
   }
-  let title = model.org_slug <> " / " <> model.repo_name
   let error = case model.error {
     option.Some(e) -> components.error_alert(e)
     option.None -> text("")
@@ -491,6 +752,7 @@ pub fn view(model: Model) -> Element(Msg) {
       div([], [toolbar(model), div([attr.class(components.card)], [file_table(model)])])
     False, Home ->
       div([], [
+        protected_branches_card(model),
         toolbar(model),
         div([attr.class(components.card <> " mb-6")], [file_table(model)]),
         readme_section(model),
@@ -502,23 +764,7 @@ pub fn view(model: Model) -> Element(Msg) {
       "/orgs/" <> model.org_slug,
       "Repositories",
     ),
-    div([attr.class("repo-header mb-4")], [
-      h2([attr.class("text-2xl font-bold text-gh-ink")], [text(title)]),
-      div([attr.class("mt-2 flex flex-wrap items-center gap-3")], [
-        a(
-          [
-            attr.href(routes.mr_list_path(model.org_slug, model.repo_name)),
-            attr.class("text-sm font-medium text-gh-accent hover:underline"),
-          ],
-          [text("Merge requests")],
-        ),
-        case clone_url {
-          "" -> text("")
-          url ->
-            p([attr.class(components.code_block)], [text(url)])
-        },
-      ]),
-    ]),
+    repo_header(model, clone_url),
     error,
     case model.loading {
       True ->

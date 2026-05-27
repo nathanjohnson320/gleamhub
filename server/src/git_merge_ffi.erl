@@ -1,14 +1,21 @@
 -module(git_merge_ffi).
--export([merge_branches/3]).
+-export([merge_branches/5]).
 
-merge_branches(GitDirBin, TargetBin, SourceBin) ->
+merge_branches(GitDirBin, TargetBin, SourceBin, MethodBin, MessageBin) ->
   GitDir = binary_to_list(GitDirBin),
   Target = binary_to_list(TargetBin),
   Source = binary_to_list(SourceBin),
+  Method = binary_to_list(MethodBin),
+  Message = binary_to_list(MessageBin),
   Wt =
     filename:join([
       os:getenv("TMPDIR", "/tmp"),
       "gleamhub_wt_" ++ integer_to_list(erlang:unique_integer([positive]))
+    ]),
+  MsgFile =
+    filename:join([
+      os:getenv("TMPDIR", "/tmp"),
+      "gleamhub_msg_" ++ integer_to_list(erlang:unique_integer([positive]))
     ]),
   AddCmd =
     "git -C "
@@ -24,13 +31,28 @@ merge_branches(GitDirBin, TargetBin, SourceBin) ->
       case string:find(AddStr, "fatal:", trailing) of
         nomatch ->
           MergeCmd =
-            "cd "
-            ++ quote(Wt)
-            ++ " && git merge --no-edit refs/heads/"
-            ++ Source
-            ++ " 2>&1",
+            case Method of
+              "squash" ->
+                ok = file:write_file(MsgFile, Message),
+                "cd "
+                ++ quote(Wt)
+                ++ " && git merge --squash refs/heads/"
+                ++ Source
+                ++ " 2>&1 && cd "
+                ++ quote(Wt)
+                ++ " && git -c user.email=gleamhub@gleamhub.local -c user.name=Gleamhub commit -F "
+                ++ quote(MsgFile)
+                ++ " 2>&1";
+              _ ->
+                "cd "
+                ++ quote(Wt)
+                ++ " && git merge --no-edit refs/heads/"
+                ++ Source
+                ++ " 2>&1"
+            end,
           MergeOut = os:cmd("sh -c " ++ quote(MergeCmd)),
           MergeStr = lists:flatten(MergeOut),
+          _ = file:delete(MsgFile),
           case string:find(MergeStr, "CONFLICT", trailing) of
             nomatch ->
               ShaCmd = "cd " ++ quote(Wt) ++ " && git rev-parse HEAD 2>/dev/null",

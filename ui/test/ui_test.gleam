@@ -21,3 +21,10 @@ pub fn merge_request_decoder_test() {
   mr.source_branch |> should.equal("feature")
   mr.description |> should.equal(option.None)
 }
+
+pub fn protected_branches_decoder_test() {
+  let assert Ok(body) =
+    json.parse("{\"branches\":[\"main\",\"release\"]}", decode.dynamic)
+  let assert Ok(branches) = decode.run(body, api.protected_branches_decoder())
+  branches |> should.equal(["main", "release"])
+}

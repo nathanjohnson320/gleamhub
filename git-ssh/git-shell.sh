@@ -55,6 +55,11 @@ if [ ! -d "$git_dir" ]; then
   exit 1
 fi
 
+export GLEAMHUB_API_URL
+export GLEAMHUB_USER_ID
+export GLEAMHUB_ORG="$org"
+export GLEAMHUB_REPO="$repo"
+
 case "$op" in
   upload-pack) exec git upload-pack "$git_dir" ;;
   receive-pack) exec git receive-pack "$git_dir" ;;

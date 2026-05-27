@@ -374,3 +374,25 @@ pub fn create_key_body(title: String, public_key: String) -> json.Json {
     #("public_key", json.string(public_key)),
   ])
 }
+
+pub fn protected_branches_decoder() -> decode.Decoder(List(String)) {
+  use branches <- decode.field("branches", decode.list(decode.string))
+  decode.success(branches)
+}
+
+pub fn protected_branches_body(branches: List(String)) -> json.Json {
+  json.object([#("branches", json.array(branches, json.string))])
+}
+
+pub type MergeMethod {
+  MergeCommit
+  Squash
+}
+
+pub fn merge_request_merge_body(method: MergeMethod) -> json.Json {
+  let value = case method {
+    MergeCommit -> "merge"
+    Squash -> "squash"
+  }
+  json.object([#("merge_method", json.string(value))])
+}

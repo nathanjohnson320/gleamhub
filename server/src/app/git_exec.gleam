@@ -6,6 +6,7 @@ import gleam/order
 import gleam/result
 import gleam/string
 import simplifile
+import wisp
 
 pub type GitError {
   GitCommandFailed(String)
@@ -60,11 +61,18 @@ pub type MergeCheck {
   MergeCheck(mergeable: Bool, message: String)
 }
 
+pub type MergeMethod {
+  MergeCommit
+  Squash
+}
+
 @external(erlang, "git_merge_ffi", "merge_branches")
 fn merge_branches_ffi(
   git_dir: String,
   target_branch: String,
   source_branch: String,
+  method: String,
+  commit_message: String,
 ) -> #(String, String)
 
 const max_blob_bytes = 1_000_000
@@ -78,11 +86,39 @@ const readme_candidates = [
 @external(erlang, "git_exec_ffi", "init_bare")
 fn init_bare_ffi(path: String) -> Nil
 
+@external(erlang, "git_exec_ffi", "install_pre_receive_hook")
+fn install_pre_receive_hook_ffi(src: String, dest: String) -> String
+
+@external(erlang, "git_exec_ffi", "is_ancestor")
+fn is_ancestor_ffi(git_dir: String, oldrev: String, newrev: String) -> String
+
 @external(erlang, "git_exec_ffi", "run_git")
 fn run_git_ffi(git_dir: String, args: List(String)) -> #(Int, String, String)
 
+const zero_sha = "0000000000000000000000000000000000000000"
+
 pub fn repo_path(root: String, disk_path: String) -> String {
   root <> "/" <> disk_path
+}
+
+fn hooks_directory() -> String {
+  case simplifile.read("./priv/hooks/pre-receive") {
+    Ok(_) -> "./priv/hooks"
+    Error(_) -> {
+      let assert Ok(priv) = wisp.priv_directory("server")
+      priv <> "/hooks"
+    }
+  }
+}
+
+pub fn install_repo_hooks(root: String, disk_path: String) -> Result(Nil, String) {
+  let git_dir = repo_path(root, disk_path)
+  let src = hooks_directory() <> "/pre-receive"
+  let dest = git_dir <> "/hooks/pre-receive"
+  case install_pre_receive_hook_ffi(src, dest) {
+    "ok" -> Ok(Nil)
+    _ -> Error("failed to install pre-receive hook")
+  }
 }
 
 pub fn init_bare_repo(root: String, disk_path: String) -> Result(Nil, String) {
@@ -91,9 +127,17 @@ pub fn init_bare_repo(root: String, disk_path: String) -> Result(Nil, String) {
     Error(e) -> Error("mkdir failed: " <> simplifile.describe_error(e))
     Ok(_) -> {
       init_bare_ffi(path)
-      Ok(Nil)
+      install_repo_hooks(root, disk_path)
     }
   }
+}
+
+pub fn is_ancestor(git_dir: String, oldrev: String, newrev: String) -> Bool {
+  is_ancestor_ffi(git_dir, oldrev, newrev) == "true"
+}
+
+pub fn is_zero_sha(sha: String) -> Bool {
+  string.trim(sha) == zero_sha
 }
 
 pub fn remove_bare_repo(root: String, disk_path: String) -> Result(Nil, String) {
@@ -369,6 +413,8 @@ pub fn merge_branches(
   git_dir: String,
   target_branch: String,
   source_branch: String,
+  method: MergeMethod,
+  commit_message: String,
 ) -> Result(String, GitError) {
   use _ <- result.try(branch_ref(git_dir, target_branch))
   use _ <- result.try(branch_ref(git_dir, source_branch))
@@ -376,8 +422,18 @@ pub fn merge_branches(
   case check.mergeable {
     False -> Error(MergeConflict(check.message))
     True -> {
+      let method_str = case method {
+        MergeCommit -> "merge"
+        Squash -> "squash"
+      }
       let #(tag, detail) =
-        merge_branches_ffi(git_dir, target_branch, source_branch)
+        merge_branches_ffi(
+          git_dir,
+          target_branch,
+          source_branch,
+          method_str,
+          commit_message,
+        )
       case tag {
         "ok" -> Ok(detail)
         "conflict" -> Error(MergeConflict(detail))

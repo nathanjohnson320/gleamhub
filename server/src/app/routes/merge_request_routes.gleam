@@ -299,6 +299,29 @@ pub fn get_diff(
   }
 }
 
+fn merge_commit_message(mr: database.MergeRequestRow) -> String {
+  case mr.description {
+    option.Some(d) -> mr.title <> "\n\n" <> d
+    option.None -> mr.title
+  }
+}
+
+fn parse_merge_method(json_body) -> Result(git_exec.MergeMethod, Response) {
+  let decoder = {
+    use merge_method <- decode.field(
+      "merge_method",
+      decode.optional(decode.string),
+    )
+    decode.success(merge_method)
+  }
+  case decode.run(json_body, decoder) {
+    Error(_) -> Ok(git_exec.MergeCommit)
+    Ok(option.None) | Ok(option.Some("merge")) -> Ok(git_exec.MergeCommit)
+    Ok(option.Some("squash")) -> Ok(git_exec.Squash)
+    Ok(option.Some(_)) -> Error(wisp.bad_request("Invalid merge_method"))
+  }
+}
+
 pub fn merge_merge_request(
   req: Request,
   ctx: Context,
@@ -307,45 +330,52 @@ pub fn merge_merge_request(
   number_str: String,
 ) -> Response {
   use <- wisp.require_method(req, http.Post)
+  use json_body <- wisp.require_json(req)
   case ensure_user(ctx) {
     Error(r) -> r
     Ok(_) ->
       case database.member_can_write(ctx.repo(), user_id(ctx), org_slug) {
         False -> wisp.response(403)
         True ->
-          case parse_mr_number(number_str) {
+          case parse_merge_method(json_body) {
             Error(r) -> r
-            Ok(number) ->
-              with_mr(ctx, org_slug, repo_name, number, fn(mr, git_dir) {
-                case mr.state {
-                  "open" ->
-                    case
-                      git_exec.merge_branches(
-                        git_dir,
-                        mr.target_branch,
-                        mr.source_branch,
-                      )
-                    {
-                      Ok(sha) ->
+            Ok(method) ->
+              case parse_mr_number(number_str) {
+                Error(r) -> r
+                Ok(number) ->
+                  with_mr(ctx, org_slug, repo_name, number, fn(mr, git_dir) {
+                    case mr.state {
+                      "open" ->
                         case
-                          database.merge_merge_request(
-                            ctx.repo(),
-                            org_slug,
-                            repo_name,
-                            number,
-                            sha,
-                            user_id(ctx),
+                          git_exec.merge_branches(
+                            git_dir,
+                            mr.target_branch,
+                            mr.source_branch,
+                            method,
+                            merge_commit_message(mr),
                           )
                         {
-                          Ok(updated) ->
-                            json_ok(json_api.merge_request_json(updated), 200)
-                          Error(_) -> wisp.internal_server_error()
+                          Ok(sha) ->
+                            case
+                              database.merge_merge_request(
+                                ctx.repo(),
+                                org_slug,
+                                repo_name,
+                                number,
+                                sha,
+                                user_id(ctx),
+                              )
+                            {
+                              Ok(updated) ->
+                                json_ok(json_api.merge_request_json(updated), 200)
+                              Error(_) -> wisp.internal_server_error()
+                            }
+                          Error(e) -> repo_browse_routes.git_error_response(e)
                         }
-                      Error(e) -> repo_browse_routes.git_error_response(e)
+                      _ -> wisp.unprocessable_content()
                     }
-                  _ -> wisp.unprocessable_content()
-                }
-              })
+                  })
+              }
           }
       }
   }

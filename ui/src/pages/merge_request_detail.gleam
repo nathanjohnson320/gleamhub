@@ -14,7 +14,7 @@ import lustre/attribute as attr
 import lustre/effect.{type Effect, batch, none}
 import lustre/element.{type Element, text, unsafe_raw_html}
 import lustre/element/html.{
-  button, div, form, h2, h3, li, p, span, textarea, ul,
+  button, div, form, h2, h3, li, option, p, select, span, textarea, ul,
 }
 import lustre/event
 import lustre_http
@@ -43,6 +43,7 @@ pub type Model {
     comment_file: option.Option(String),
     comment_line: option.Option(Int),
     show_merge_confirm: Bool,
+    merge_method: api.MergeMethod,
     loading: Bool,
     loading_patch: Bool,
     error: option.Option(String),
@@ -61,6 +62,7 @@ pub type Msg {
   SubmitComment
   CommentPosted(Result(MrComment, lustre_http.HttpError))
   SelectFile(String)
+  MergeMethodChanged(api.MergeMethod)
   ShowMergeConfirm
   CancelMergeConfirm
   Merge
@@ -85,6 +87,7 @@ pub fn init(org_slug: String, repo_name: String, number: Int) -> Model {
     comment_file: option.None,
     comment_line: option.None,
     show_merge_confirm: False,
+    merge_method: api.MergeCommit,
     loading: True,
     loading_patch: False,
     error: option.None,
@@ -237,6 +240,10 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
         lustre_http.expect_json(api.diff_patch_decoder(), PatchLoaded),
       ),
     )
+    MergeMethodChanged(method) -> #(
+      Model(..model, merge_method: method),
+      none(),
+    )
     ShowMergeConfirm -> #(Model(..model, show_merge_confirm: True), none())
     CancelMergeConfirm -> #(Model(..model, show_merge_confirm: False), none())
     Merge -> #(
@@ -244,7 +251,7 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
       lustre_http.post(
         config,
         api_base(config, model) <> "/merge",
-        json.object([]),
+        api.merge_request_merge_body(model.merge_method),
         lustre_http.expect_json(api.merge_request_decoder(), Merged),
       ),
     )
@@ -363,6 +370,109 @@ fn merge_check_banner(check: MergeCheck) -> Element(Msg) {
   }
 }
 
+fn merge_method_label(method: api.MergeMethod) -> String {
+  case method {
+    api.MergeCommit -> "Create merge commit"
+    api.Squash -> "Squash and merge"
+  }
+}
+
+const action_size = "!h-10 shrink-0"
+
+const action_select =
+  action_size
+  <> " rounded-lg border border-slate-200 bg-white text-sm text-gh-ink shadow-sm"
+
+fn merge_method_select(model: Model) -> Element(Msg) {
+  select(
+    [
+      attr.class(
+        components.input
+        <> " "
+        <> action_select
+        <> " !w-auto !min-w-[11rem] !py-0",
+      ),
+      event.on_change(fn(value) {
+        case value {
+          "squash" -> MergeMethodChanged(api.Squash)
+          _ -> MergeMethodChanged(api.MergeCommit)
+        }
+      }),
+    ],
+    [
+      option(
+        [
+          attr.value("merge"),
+          attr.selected(model.merge_method == api.MergeCommit),
+        ],
+        "Create merge commit",
+      ),
+      option(
+        [
+          attr.value("squash"),
+          attr.selected(model.merge_method == api.Squash),
+        ],
+        "Squash and merge",
+      ),
+    ],
+  )
+}
+
+fn merge_confirm_message(model: Model, mr: MergeRequest) -> String {
+  merge_method_label(model.merge_method)
+  <> " "
+  <> mr.source_branch
+  <> " into "
+  <> mr.target_branch
+  <> "?"
+}
+
+fn merge_confirm_popover(
+  model: Model,
+  mr: MergeRequest,
+  check: MergeCheck,
+) -> Element(Msg) {
+  div(
+    [
+      attr.class(
+        "absolute right-0 top-full z-40 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-xl ring-1 ring-slate-900/10",
+      ),
+      attr.role("dialog"),
+    ],
+    [
+      p([attr.class("mb-4 text-sm leading-snug text-gh-ink")], [
+        text(merge_confirm_message(model, mr)),
+      ]),
+      div([attr.class("flex gap-2")], [
+        button(
+          [
+            attr.type_("button"),
+            attr.class(
+              components.btn_secondary <> " " <> action_size <> " min-w-0 flex-1 !px-3",
+            ),
+            event.on_click(CancelMergeConfirm),
+          ],
+          [text("Cancel")],
+        ),
+        button(
+          [
+            attr.type_("button"),
+            attr.class(
+              components.btn_primary
+              <> " "
+              <> action_size
+              <> " min-w-0 flex-1 !border-transparent !bg-gh-accent !px-3 !text-white hover:!bg-violet-700",
+            ),
+            attr.disabled(!check.mergeable),
+            event.on_click(Merge),
+          ],
+          [text("Confirm")],
+        ),
+      ]),
+    ],
+  )
+}
+
 fn action_buttons(
   model: Model,
   mr: MergeRequest,
@@ -370,52 +480,58 @@ fn action_buttons(
 ) -> Element(Msg) {
   case mr.state {
     "open" ->
-      div([attr.class("flex flex-wrap gap-2")], [
-        case model.show_merge_confirm {
-          True ->
-            div([attr.class("flex flex-col gap-2 rounded-lg border border-slate-200 p-3")], [
-              p([attr.class("text-sm text-gh-ink")], [
-                text("Merge " <> mr.source_branch <> " into " <> mr.target_branch <> "?"),
-              ]),
-              div([attr.class("flex gap-2")], [
-                button(
-                  [
-                    attr.type_("button"),
-                    attr.class(components.btn_primary),
-                    attr.disabled(!check.mergeable),
-                    event.on_click(Merge),
-                  ],
-                  [text("Confirm merge")],
-                ),
-                button(
-                  [
-                    attr.type_("button"),
-                    attr.class(components.btn_secondary),
-                    event.on_click(CancelMergeConfirm),
-                  ],
-                  [text("Cancel")],
-                ),
-              ]),
-            ])
-          False ->
+      div([attr.class("relative w-full shrink-0 sm:w-auto")], [
+        div(
+          [
+            attr.class(
+              "inline-flex w-full flex-wrap items-center justify-end gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-2 sm:w-auto",
+            ),
+          ],
+          [
+            span([attr.class("hidden pl-1 text-xs font-medium text-gh-muted sm:inline")], [
+              text("Merge as"),
+            ]),
+            merge_method_select(model),
             button(
               [
                 attr.type_("button"),
-                attr.class(components.btn_primary),
-                attr.disabled(!check.mergeable),
-                event.on_click(ShowMergeConfirm),
+                attr.class(components.btn_secondary <> " " <> action_size <> " !px-4"),
+                event.on_click(CloseMr),
               ],
-              [text("Merge")],
-            )
-        },
-        button(
-          [
-            attr.type_("button"),
-            attr.class(components.btn_secondary),
-            event.on_click(CloseMr),
+              [text("Close")],
+            ),
+            case model.show_merge_confirm {
+              False ->
+                button(
+                  [
+                    attr.type_("button"),
+                    attr.class(
+                      components.btn_primary
+                      <> " "
+                      <> action_size
+                      <> " !border-transparent !bg-gh-accent !px-5 !text-white hover:!bg-violet-700",
+                    ),
+                    attr.disabled(!check.mergeable),
+                    event.on_click(ShowMergeConfirm),
+                  ],
+                  [text("Merge")],
+                )
+              True ->
+                button(
+                  [
+                    attr.type_("button"),
+                    attr.class(components.btn_secondary <> " " <> action_size <> " !px-4"),
+                    event.on_click(CancelMergeConfirm),
+                  ],
+                  [text("Cancel")],
+                )
+            },
           ],
-          [text("Close")],
         ),
+        case model.show_merge_confirm {
+          False -> text("")
+          True -> merge_confirm_popover(model, mr, check)
+        },
       ])
     _ -> text("")
   }

@@ -267,6 +267,60 @@ pub fn authorized_key_line(db: pog.Connection, key_blob: String) -> Result(
   |> result.map(option.map(_, format_authorized_line))
 }
 
+pub fn list_protected_branches(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+) -> Result(List(String), pog.QueryError) {
+  sql.pb_list(db, org_slug, repo_name)
+  |> result_map_rows
+  |> result.map(list.map(_, fn(row) { row.branch_name }))
+}
+
+pub fn replace_protected_branches(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  branches: List(String),
+) -> Result(List(String), pog.QueryError) {
+  use _ <- result.try(sql.pb_delete_for_repo(db, org_slug, repo_name))
+  insert_protected_branches(db, org_slug, repo_name, branches, [])
+}
+
+fn insert_protected_branches(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  branches: List(String),
+  acc: List(String),
+) -> Result(List(String), pog.QueryError) {
+  case branches {
+    [] -> Ok(acc)
+    [branch, ..rest] -> {
+      use inserted <- result.try(
+        sql.pb_insert(db, org_slug, repo_name, branch)
+        |> result_map_first_row
+        |> result.map(fn(row) { row.branch_name }),
+      )
+      insert_protected_branches(db, org_slug, repo_name, rest, [
+        inserted,
+        ..acc
+      ])
+    }
+  }
+}
+
+pub fn is_branch_protected(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  branch_name: String,
+) -> Result(Bool, pog.QueryError) {
+  sql.pb_is_protected(db, org_slug, repo_name, branch_name)
+  |> result_map_rows
+  |> result.map(fn(rows) { rows != [] })
+}
+
 pub fn list_merge_requests(
   db: pog.Connection,
   org_slug: String,

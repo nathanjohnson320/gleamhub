@@ -1,11 +1,41 @@
 -module(git_exec_ffi).
--export([init_bare/1, run_git/2]).
+-export([init_bare/1, run_git/2, install_pre_receive_hook/2, is_ancestor/3]).
 
 init_bare(PathBin) when is_binary(PathBin) ->
   Path = binary_to_list(PathBin),
   Cmd = "git init --bare " ++ quote(Path),
   os:cmd(Cmd),
   nil.
+
+install_pre_receive_hook(SrcBin, DestBin) ->
+  Src = binary_to_list(SrcBin),
+  Dest = binary_to_list(DestBin),
+  Dir = filename:dirname(Dest),
+  ok = filelib:ensure_dir(Dest),
+  case file:copy(Src, Dest) of
+    {ok, _} ->
+      _ = os:cmd("chmod +x " ++ quote(Dest)),
+      <<"ok">>;
+    {error, Reason} ->
+      {<<"error">>, list_to_binary(io_lib:format("~p", [Reason]))}
+  end.
+
+is_ancestor(GitDirBin, OldBin, NewBin) ->
+  GitDir = binary_to_list(GitDirBin),
+  Old = binary_to_list(OldBin),
+  New = binary_to_list(NewBin),
+  Cmd =
+    "git -C "
+    ++ quote(GitDir)
+    ++ " merge-base --is-ancestor "
+    ++ quote(Old)
+    ++ " "
+    ++ quote(New)
+    ++ " 2>/dev/null",
+  case os:cmd("sh -c " ++ quote(Cmd)) of
+    [] -> <<"true">>;
+    _ -> <<"false">>
+  end.
 
 %% os:cmd/1 returns only output text, not the exit code — that forced the old
 %% __GLEAMHUB_EXIT marker in stdout (broken when file content contained it).

@@ -267,3 +267,16 @@ pub fn merge_check_json(check: MergeCheck) -> json.Json {
     #("message", json.string(check.message)),
   ])
 }
+
+pub fn protected_branches_json(branches: List(String)) -> json.Json {
+  json.object([
+    #("branches", json.array(branches, of: json.string)),
+  ])
+}
+
+pub fn ref_update_json(allowed: Bool, message: String) -> json.Json {
+  json.object([
+    #("allowed", json.bool(allowed)),
+    #("message", json.string(message)),
+  ])
+}
