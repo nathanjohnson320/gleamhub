@@ -25,6 +25,16 @@ setup_fixture_repo() ->
     ++ quote(Work)
     ++ " && git init -q && git add . && git -c user.email=test@test.com -c user.name=Test commit -qm init && git branch -M main"
   ),
+  ok = file:write_file(
+    filename:join([Work, "feature.txt"]),
+    <<"feature branch\n">>
+  ),
+  _ = os:cmd(
+    "cd "
+    ++ quote(Work)
+    ++ " && git checkout -q -b feature && git add feature.txt && git -c user.email=test@test.com -c user.name=Test commit -qm feature"
+  ),
+  _ = os:cmd("cd " ++ quote(Work) ++ " && git checkout -q main"),
   list_to_binary(Work).
 
 cleanup_fixture_repo(PathBin) ->

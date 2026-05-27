@@ -1,7 +1,9 @@
 import cors_builder as cors
 import gleam/bool
 import gleam/http
+import gleam/list
 import gleam/option
+import gleam/string
 import pog
 import wisp
 import ywt/verify_key.{type VerifyKey}
@@ -50,10 +52,29 @@ pub fn middleware(
   handle_request(req)
 }
 
+fn response_is_json(response: wisp.Response) -> Bool {
+  list.any(response.headers, fn(header) {
+    let #(name, value) = header
+    name == "content-type" && string.contains(value, "application/json")
+  })
+}
+
+fn response_has_body(response: wisp.Response) -> Bool {
+  case response.body {
+    wisp.Text("") -> False
+    wisp.Text(_) -> True
+    wisp.Bytes(_) -> True
+    wisp.File(_, _, _) -> True
+  }
+}
+
 pub fn default_responses(handle_request: fn() -> wisp.Response) -> wisp.Response {
   let response = handle_request()
 
-  use <- bool.guard(when: response.body != wisp.Text(""), return: response)
+  use <- bool.guard(
+    when: response_is_json(response) || response_has_body(response),
+    return: response,
+  )
 
   case response.status {
     404 | 405 ->

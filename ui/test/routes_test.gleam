@@ -1,7 +1,8 @@
 import gleeunit
 import routes.{
-  Blob, Home, OrgRepos, RepoMissingOrg, RepoView, Tree,
-  from_pathname, repo_blob_line_path, repo_blob_line_range_path,
+  Blob, Home, MrDetail, MrList, MrNew, OrgRepos, RepoMissingOrg, RepoView, Tree,
+  from_pathname, mr_detail_path, mr_list_path, mr_new_path, repo_blob_line_path,
+  repo_blob_line_range_path,
 }
 
 pub fn main() {
@@ -30,6 +31,26 @@ pub fn tree_pathname_test() {
 pub fn blob_pathname_test() {
   assert from_pathname("/orgs/stord/repos/app/blob/main/README.md")
     == RepoView(Blob, "stord", "app", "main", "README.md")
+}
+
+pub fn mr_list_pathname_test() {
+  assert from_pathname("/orgs/acme/repos/demo/merge-requests") == MrList("acme", "demo")
+}
+
+pub fn mr_new_pathname_test() {
+  assert from_pathname("/orgs/acme/repos/demo/merge-requests/new")
+    == MrNew("acme", "demo")
+}
+
+pub fn mr_detail_pathname_test() {
+  assert from_pathname("/orgs/acme/repos/demo/merge-requests/12")
+    == MrDetail("acme", "demo", 12)
+}
+
+pub fn mr_path_helpers_test() {
+  assert mr_list_path("acme", "demo") == "/orgs/acme/repos/demo/merge-requests"
+  assert mr_new_path("acme", "demo") == "/orgs/acme/repos/demo/merge-requests/new"
+  assert mr_detail_path("acme", "demo", 3) == "/orgs/acme/repos/demo/merge-requests/3"
 }
 
 pub fn blob_line_path_test() {

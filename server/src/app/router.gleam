@@ -1,5 +1,6 @@
 import app/routes/api_routes
 import app/routes/clerk
+import app/routes/merge_request_routes
 import app/routes/repo_browse_routes
 import app/routes/ssh_internal_routes
 import app/web.{type Context}
@@ -56,6 +57,58 @@ pub fn handle_request(req: Request, ctx: Context) -> Response {
                 _ -> wisp.method_not_allowed([http.Get, http.Post])
               }
             }
+            ["api", "orgs", slug, "repos", name, "merge-requests"] -> {
+              case req.method {
+                http.Get ->
+                  merge_request_routes.list_merge_requests(
+                    req,
+                    ctx,
+                    slug,
+                    name,
+                  )
+                http.Post ->
+                  merge_request_routes.create_merge_request(
+                    req,
+                    ctx,
+                    slug,
+                    name,
+                  )
+                _ -> wisp.method_not_allowed([http.Get, http.Post])
+              }
+            }
+            ["api", "orgs", _slug, "repos", _name, "merge-requests", "new"] ->
+              wisp.not_found()
+            ["api", "orgs", slug, "repos", name, "merge-requests", num, "merge"] ->
+              merge_request_routes.merge_merge_request(req, ctx, slug, name, num)
+            ["api", "orgs", slug, "repos", name, "merge-requests", num, "close"] ->
+              merge_request_routes.close_merge_request_route(
+                req,
+                ctx,
+                slug,
+                name,
+                num,
+              )
+            ["api", "orgs", slug, "repos", name, "merge-requests", num, "commits"] ->
+              merge_request_routes.list_commits(req, ctx, slug, name, num)
+            ["api", "orgs", slug, "repos", name, "merge-requests", num, "diff"] ->
+              merge_request_routes.get_diff(req, ctx, slug, name, num)
+            ["api", "orgs", slug, "repos", name, "merge-requests", num, "comments"] -> {
+              case req.method {
+                http.Get ->
+                  merge_request_routes.list_comments(req, ctx, slug, name, num)
+                http.Post ->
+                  merge_request_routes.create_comment(req, ctx, slug, name, num)
+                _ -> wisp.method_not_allowed([http.Get, http.Post])
+              }
+            }
+            ["api", "orgs", slug, "repos", name, "merge-requests", num] ->
+              merge_request_routes.get_merge_request_detail(
+                req,
+                ctx,
+                slug,
+                name,
+                num,
+              )
             ["api", "orgs", slug, "repos", name, "tree"] ->
               repo_browse_routes.get_repo_tree_root(req, ctx, slug, name)
             ["api", "orgs", slug, "repos", name, "tree", ref, ..path] ->

@@ -13,6 +13,9 @@ pub type Route {
   Orgs
   OrgRepos(String)
   RepoView(ViewMode, String, String, String, String)
+  MrList(String, String)
+  MrNew(String, String)
+  MrDetail(String, String, Int)
   RepoMissingOrg(String)
   Keys
   NotFound
@@ -50,6 +53,13 @@ fn from_segments(segments: List(String)) -> Route {
       RepoView(Tree, org, repo, ref, join_path(path))
     ["orgs", org, "repos", repo, "blob", ref, ..path] ->
       RepoView(Blob, org, repo, ref, join_path(path))
+    ["orgs", org, "repos", repo, "merge-requests"] -> MrList(org, repo)
+    ["orgs", org, "repos", repo, "merge-requests", "new"] -> MrNew(org, repo)
+    ["orgs", org, "repos", repo, "merge-requests", num] ->
+      case int.parse(num) {
+        Ok(n) -> MrDetail(org, repo, n)
+        Error(_) -> NotFound
+      }
     _ -> NotFound
   }
 }
@@ -60,6 +70,18 @@ fn join_path(segments: List(String)) -> String {
 
 pub fn repo_home_path(org: String, repo: String) -> String {
   "/orgs/" <> org <> "/repos/" <> uri.percent_encode(repo)
+}
+
+pub fn mr_list_path(org: String, repo: String) -> String {
+  repo_home_path(org, repo) <> "/merge-requests"
+}
+
+pub fn mr_new_path(org: String, repo: String) -> String {
+  mr_list_path(org, repo) <> "/new"
+}
+
+pub fn mr_detail_path(org: String, repo: String, number: Int) -> String {
+  mr_list_path(org, repo) <> "/" <> int.to_string(number)
 }
 
 pub fn repo_tree_path(org: String, repo: String, ref: String, path: String) -> String {

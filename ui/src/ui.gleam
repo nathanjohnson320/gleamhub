@@ -13,12 +13,14 @@ import lustre/event
 import blob_lines
 import modem
 import pages/keys
+import pages/merge_request_detail
+import pages/merge_requests
 import pages/org_repos
 import pages/orgs
 import pages/repo_view
 import routes.{
-  type Route, Blob, Keys, NotFound, OrgRepos, Orgs, RepoMissingOrg, RepoView,
-  from_uri,
+  type Route, Blob, Keys, MrDetail, MrList, MrNew, NotFound, OrgRepos, Orgs,
+  RepoMissingOrg, RepoView, from_uri,
 }
 
 pub fn main(
@@ -42,6 +44,8 @@ type Model {
     orgs: orgs.Model,
     repos: option.Option(org_repos.Model),
     repo_view: option.Option(repo_view.Model),
+    mr: option.Option(merge_requests.Model),
+    mr_detail: option.Option(merge_request_detail.Model),
     keys: keys.Model,
   )
 }
@@ -55,6 +59,8 @@ pub type Msg {
   OrgsMsg(orgs.Msg)
   ReposMsg(org_repos.Msg)
   RepoViewMsg(repo_view.Msg)
+  MrMsg(merge_requests.Msg)
+  MrDetailMsg(merge_request_detail.Msg)
   KeysMsg(keys.Msg)
   ClerkSessionUpdated(String)
   OpenAccount
@@ -79,6 +85,8 @@ fn init(flags: Flags) -> #(Model, Effect(Msg)) {
       },
       repos: repos_model(route),
       repo_view: repo_view_model(route),
+      mr: mr_model(route),
+      mr_detail: mr_detail_model(route),
       keys: keys.init(),
     ),
     effect.batch([
@@ -132,6 +140,24 @@ fn repo_view_model(route: Route) -> option.Option(repo_view.Model) {
   }
 }
 
+fn mr_model(route: Route) -> option.Option(merge_requests.Model) {
+  case route {
+    MrList(org, repo) ->
+      option.Some(merge_requests.init(org, repo, merge_requests.List))
+    MrNew(org, repo) ->
+      option.Some(merge_requests.init(org, repo, merge_requests.New))
+    _ -> option.None
+  }
+}
+
+fn mr_detail_model(route: Route) -> option.Option(merge_request_detail.Model) {
+  case route {
+    MrDetail(org, repo, number) ->
+      option.Some(merge_request_detail.init(org, repo, number))
+    _ -> option.None
+  }
+}
+
 fn route_effect(config: config.Config, route: Route) -> Effect(Msg) {
   case route {
     Orgs -> effect.map(orgs.on_load(config), OrgsMsg)
@@ -139,6 +165,17 @@ fn route_effect(config: config.Config, route: Route) -> Effect(Msg) {
     RepoView(_, _, _, _, _) ->
       case repo_view_model(route) {
         option.Some(m) -> effect.map(repo_view.on_load(config, m), RepoViewMsg)
+        option.None -> effect.none()
+      }
+    MrList(_, _) | MrNew(_, _) ->
+      case mr_model(route) {
+        option.Some(m) -> effect.map(merge_requests.on_load(config, m), MrMsg)
+        option.None -> effect.none()
+      }
+    MrDetail(_, _, _) ->
+      case mr_detail_model(route) {
+        option.Some(m) ->
+          effect.map(merge_request_detail.on_load(config, m), MrDetailMsg)
         option.None -> effect.none()
       }
     Keys -> effect.map(keys.on_load(config), KeysMsg)
@@ -156,6 +193,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           model,
           case route {
             RepoView(Blob, _, _, _, _) -> blob_lines.init_effect()
+            MrDetail(_, _, _) -> effect.none()
             _ -> effect.none()
           },
         )
@@ -165,6 +203,8 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
             route:,
             repos: repos_model(route),
             repo_view: repo_view_model(route),
+            mr: mr_model(route),
+            mr_detail: mr_detail_model(route),
           ),
           route_effect(model.config, route),
         )
@@ -193,6 +233,27 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           #(
             Model(..model, repo_view: option.Some(rv)),
             effect.map(eff, RepoViewMsg),
+          )
+        }
+        option.None -> #(model, effect.none())
+      }
+    }
+    MrMsg(m) -> {
+      case model.mr {
+        option.Some(mr) -> {
+          let #(mr, eff) = merge_requests.update(m, mr, model.config)
+          #(Model(..model, mr: option.Some(mr)), effect.map(eff, MrMsg))
+        }
+        option.None -> #(model, effect.none())
+      }
+    }
+    MrDetailMsg(m) -> {
+      case model.mr_detail {
+        option.Some(mrd) -> {
+          let #(mrd, eff) = merge_request_detail.update(m, mrd, model.config)
+          #(
+            Model(..model, mr_detail: option.Some(mrd)),
+            effect.map(eff, MrDetailMsg),
           )
         }
         option.None -> #(model, effect.none())
@@ -277,6 +338,24 @@ fn view(model: Model) -> Element(Msg) {
         option.None ->
           div([attr.class(components.page)], [
             components.empty_state("Loading repository…"),
+          ])
+      }
+    }
+    MrList(_, _) | MrNew(_, _) -> {
+      case model.mr {
+        option.Some(mr) -> merge_requests.view(mr) |> map(MrMsg)
+        option.None ->
+          div([attr.class(components.page)], [
+            components.empty_state("Loading merge requests…"),
+          ])
+      }
+    }
+    MrDetail(_, _, _) -> {
+      case model.mr_detail {
+        option.Some(mrd) -> merge_request_detail.view(mrd) |> map(MrDetailMsg)
+        option.None ->
+          div([attr.class(components.page)], [
+            components.empty_state("Loading merge request…"),
           ])
       }
     }

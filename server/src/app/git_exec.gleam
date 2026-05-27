@@ -12,8 +12,10 @@ pub type GitError {
   NotFound
   NotATree
   InvalidPath
+  InvalidBranch
   BlobTooLarge
   NoBranches
+  MergeConflict(String)
 }
 
 pub type TreeEntry {
@@ -40,7 +42,34 @@ pub type Readme {
   Readme(path: String, content: String)
 }
 
+pub type CommitEntry {
+  CommitEntry(sha: String, subject: String, author: String, committed_at: String)
+}
+
+pub type DiffFile {
+  DiffFile(
+    path: String,
+    old_path: option.Option(String),
+    status: String,
+    additions: Int,
+    deletions: Int,
+  )
+}
+
+pub type MergeCheck {
+  MergeCheck(mergeable: Bool, message: String)
+}
+
+@external(erlang, "git_merge_ffi", "merge_branches")
+fn merge_branches_ffi(
+  git_dir: String,
+  target_branch: String,
+  source_branch: String,
+) -> #(String, String)
+
 const max_blob_bytes = 1_000_000
+
+const max_diff_bytes = 1_000_000
 
 const readme_candidates = [
   "README.md", "README.MD", "readme.md", "Readme.md", "README",
@@ -244,6 +273,172 @@ pub fn find_readme(
   ref: String,
 ) -> Result(option.Option(Readme), GitError) {
   find_readme_loop(git_dir, ref, readme_candidates)
+}
+
+pub fn branch_exists(git_dir: String, branch: String) -> Result(Nil, GitError) {
+  case git_path.normalize_branch(branch) {
+    Error(_) -> Error(InvalidBranch)
+    Ok(name) ->
+      case run_git(git_dir, ["show-ref", "--verify", "refs/heads/" <> name]) {
+        Ok(_) -> Ok(Nil)
+        Error(NotFound) -> Error(NotFound)
+        Error(e) -> Error(e)
+      }
+  }
+}
+
+pub fn merge_base(
+  git_dir: String,
+  target_branch: String,
+  source_branch: String,
+) -> Result(String, GitError) {
+  use target <- result.try(branch_ref(git_dir, target_branch))
+  use source <- result.try(branch_ref(git_dir, source_branch))
+  use base <- result.try(run_git(git_dir, ["merge-base", target, source]))
+  Ok(string.trim(base))
+}
+
+pub fn commits_between(
+  git_dir: String,
+  target_branch: String,
+  source_branch: String,
+) -> Result(List(CommitEntry), GitError) {
+  use base <- result.try(merge_base(git_dir, target_branch, source_branch))
+  use head <- result.try(branch_ref(git_dir, source_branch))
+  use out <- result.try(run_git(git_dir, [
+    "log",
+    "--format=%H%x09%s%x09%an%x09%at",
+    base <> ".." <> head,
+  ]))
+  Ok(parse_commits(out))
+}
+
+pub fn diff_summary(
+  git_dir: String,
+  target_branch: String,
+  source_branch: String,
+) -> Result(List(DiffFile), GitError) {
+  use base <- result.try(merge_base(git_dir, target_branch, source_branch))
+  use head <- result.try(branch_ref(git_dir, source_branch))
+  use out <- result.try(run_git(git_dir, ["diff", "--numstat", base <> "..." <> head]))
+  Ok(parse_numstat(out))
+}
+
+pub fn diff_patch(
+  git_dir: String,
+  target_branch: String,
+  source_branch: String,
+  path: String,
+) -> Result(String, GitError) {
+  case git_path.normalize(path) {
+    Error(_) -> Error(InvalidPath)
+    Ok(norm) -> {
+      use base <- result.try(merge_base(git_dir, target_branch, source_branch))
+      use head <- result.try(branch_ref(git_dir, source_branch))
+      use patch <- result.try(run_git(git_dir, [
+        "diff",
+        "-U3",
+        base <> "..." <> head,
+        "--",
+        norm,
+      ]))
+      case string.length(patch) > max_diff_bytes {
+        True -> Error(BlobTooLarge)
+        False -> Ok(patch)
+      }
+    }
+  }
+}
+
+pub fn can_merge(
+  git_dir: String,
+  target_branch: String,
+  source_branch: String,
+) -> Result(MergeCheck, GitError) {
+  use base <- result.try(merge_base(git_dir, target_branch, source_branch))
+  use target <- result.try(branch_ref(git_dir, target_branch))
+  use source <- result.try(branch_ref(git_dir, source_branch))
+  use out <- result.try(run_git(git_dir, ["merge-tree", base, target, source]))
+  case string.contains(out, "CONFLICT") {
+    True -> Ok(MergeCheck(mergeable: False, message: "Merge conflicts"))
+    False -> Ok(MergeCheck(mergeable: True, message: ""))
+  }
+}
+
+pub fn merge_branches(
+  git_dir: String,
+  target_branch: String,
+  source_branch: String,
+) -> Result(String, GitError) {
+  use _ <- result.try(branch_ref(git_dir, target_branch))
+  use _ <- result.try(branch_ref(git_dir, source_branch))
+  use check <- result.try(can_merge(git_dir, target_branch, source_branch))
+  case check.mergeable {
+    False -> Error(MergeConflict(check.message))
+    True -> {
+      let #(tag, detail) =
+        merge_branches_ffi(git_dir, target_branch, source_branch)
+      case tag {
+        "ok" -> Ok(detail)
+        "conflict" -> Error(MergeConflict(detail))
+        _ -> Error(GitCommandFailed(detail))
+      }
+    }
+  }
+}
+
+fn branch_ref(git_dir: String, branch: String) -> Result(String, GitError) {
+  case git_path.normalize_branch(branch) {
+    Error(_) -> Error(InvalidBranch)
+    Ok(name) ->
+      case run_git(git_dir, ["rev-parse", "refs/heads/" <> name]) {
+        Ok(sha) -> Ok(string.trim(sha))
+        Error(e) -> Error(e)
+      }
+  }
+}
+
+fn parse_commits(output: String) -> List(CommitEntry) {
+  output
+  |> string.split(on: "\n")
+  |> list.filter(fn(line) { line != "" })
+  |> list.filter_map(parse_commit_line)
+}
+
+fn parse_commit_line(line: String) -> Result(CommitEntry, Nil) {
+  case string.split(line, on: "\t") {
+    [sha, subject, author, at] ->
+      Ok(CommitEntry(sha:, subject:, author:, committed_at: at))
+    _ -> Error(Nil)
+  }
+}
+
+fn parse_numstat(output: String) -> List(DiffFile) {
+  output
+  |> string.split(on: "\n")
+  |> list.filter(fn(line) { line != "" })
+  |> list.filter_map(parse_numstat_line)
+}
+
+fn parse_numstat_line(line: String) -> Result(DiffFile, Nil) {
+  case string.split(line, on: "\t") {
+    [add_str, del_str, path] -> {
+      let status = case add_str, del_str {
+        "-", "-" -> "binary"
+        _, _ -> "modified"
+      }
+      let additions = case add_str {
+        "-" -> 0
+        _ -> parse_int(add_str)
+      }
+      let deletions = case del_str {
+        "-" -> 0
+        _ -> parse_int(del_str)
+      }
+      Ok(DiffFile(path:, old_path: option.None, status:, additions:, deletions:))
+    }
+    _ -> Error(Nil)
+  }
 }
 
 fn find_readme_loop(

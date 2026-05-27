@@ -82,6 +82,19 @@ Repos on disk: `server/data/repos/{org}/{repo}.git`
 
 ---
 
+## Merge requests (same-repo)
+
+After pushing a feature branch over SSH:
+
+1. Open the repository in the UI → **Merge requests** → **New merge request**.
+2. Choose **source** (your branch) and **target** (e.g. `main`), add a title, and create.
+3. On the merge request page, use **Conversation**, **Commits**, and **Changes** (file diff with line comments).
+4. Org members with **write** access can **Merge** when Git reports no conflicts; the author (or a writer) can **Close** an open MR.
+
+The server stores MR metadata in Postgres; diffs and merges run live against the bare repo (`git merge-base`, `git diff`, worktree merge + `update-ref`).
+
+---
+
 ## Local development (Gleam + Vite)
 
 For server/UI code changes without rebuilding the server image every time:
@@ -166,6 +179,10 @@ Repos: `$GIT_REPOS_ROOT/{org_slug}/{repo}.git` (default `./server/data/repos` lo
 | `GET .../repos/:name/readme?ref=` | Clerk JWT + member |
 | `GET .../repos/:name/tree/:ref/...` | Clerk JWT + member |
 | `GET .../repos/:name/blob/:ref/...` | Clerk JWT + member |
+| `GET/POST /api/orgs/:slug/repos/:name/merge-requests` | Clerk JWT + member |
+| `GET .../merge-requests/:number` (+ `/commits`, `/diff`, `/comments`) | Clerk JWT + member |
+| `POST .../merge-requests/:number/merge` | Clerk JWT + org **write** |
+| `POST .../merge-requests/:number/close` | Clerk JWT + author or **write** |
 | `GET/POST/DELETE /api/ssh-keys` | Clerk JWT |
 | `GET /internal/ssh/authorized_keys` | Docker network only |
 | `GET /internal/ssh/access` | Docker network only |

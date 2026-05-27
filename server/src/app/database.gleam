@@ -2,6 +2,7 @@ import app/sql
 import gleam/list
 import gleam/option.{type Option}
 import gleam/result
+import gleam/string
 import pog
 import youid/uuid
 
@@ -25,6 +26,37 @@ pub type RepoRow {
 
 pub type KeyRow {
   KeyRow(id: String, title: String, public_key: String, fingerprint: String)
+}
+
+pub type MergeRequestRow {
+  MergeRequestRow(
+    id: String,
+    number: Int,
+    title: String,
+    description: Option(String),
+    author_user_id: String,
+    source_branch: String,
+    target_branch: String,
+    state: String,
+    merge_commit_sha: Option(String),
+    merged_by_user_id: Option(String),
+    merged_at: Option(String),
+    closed_at: Option(String),
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+pub type MergeRequestCommentRow {
+  MergeRequestCommentRow(
+    id: String,
+    author_user_id: String,
+    body: String,
+    file_path: Option(String),
+    line: Option(Int),
+    created_at: String,
+    updated_at: String,
+  )
 }
 
 pub fn upsert_user(
@@ -233,6 +265,312 @@ pub fn authorized_key_line(db: pog.Connection, key_blob: String) -> Result(
   sql.keys_authorized_line(db, key_blob)
   |> result_map_optional_row
   |> result.map(option.map(_, format_authorized_line))
+}
+
+pub fn list_merge_requests(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+) -> Result(List(MergeRequestRow), pog.QueryError) {
+  sql.mr_list(db, org_slug, repo_name)
+  |> result_map_rows
+  |> result.map(list.map(_, mr_from_list_row))
+}
+
+pub fn get_merge_request(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  number: Int,
+) -> Result(Option(MergeRequestRow), pog.QueryError) {
+  sql.mr_get(db, org_slug, repo_name, number)
+  |> result_map_optional_row
+  |> result.map(option.map(_, mr_from_get_row))
+}
+
+pub fn find_open_merge_request(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  source_branch: String,
+  target_branch: String,
+) -> Result(Option(Int), pog.QueryError) {
+  sql.mr_find_open(db, org_slug, repo_name, source_branch, target_branch)
+  |> result_map_optional_row
+  |> result.map(option.map(_, fn(row) { row.number }))
+}
+
+pub fn insert_merge_request(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  title: String,
+  description: Option(String),
+  author_user_id: String,
+  source_branch: String,
+  target_branch: String,
+) -> Result(MergeRequestRow, pog.QueryError) {
+  sql.mr_insert(
+    db,
+    org_slug,
+    repo_name,
+    title,
+    nullable_text(description),
+    author_user_id,
+    source_branch,
+    target_branch,
+  )
+  |> result_map_first_row
+  |> result.map(mr_from_insert_row)
+}
+
+pub fn merge_merge_request(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  number: Int,
+  merge_commit_sha: String,
+  merged_by_user_id: String,
+) -> Result(MergeRequestRow, pog.QueryError) {
+  sql.mr_merge(
+    db,
+    org_slug,
+    repo_name,
+    number,
+    merge_commit_sha,
+    merged_by_user_id,
+  )
+  |> result_map_first_row
+  |> result.map(mr_from_merge_row)
+}
+
+pub fn close_merge_request(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  number: Int,
+) -> Result(MergeRequestRow, pog.QueryError) {
+  sql.mr_close(db, org_slug, repo_name, number)
+  |> result_map_first_row
+  |> result.map(mr_from_close_row)
+}
+
+pub fn list_merge_request_comments(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  number: Int,
+) -> Result(List(MergeRequestCommentRow), pog.QueryError) {
+  sql.mr_comments_list(db, org_slug, repo_name, number)
+  |> result_map_rows
+  |> result.map(list.map(_, mr_comment_from_list_row))
+}
+
+pub fn insert_merge_request_comment(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  number: Int,
+  author_user_id: String,
+  body: String,
+  file_path: Option(String),
+  line: Option(Int),
+) -> Result(MergeRequestCommentRow, pog.QueryError) {
+  sql.mr_comments_insert(
+    db,
+    org_slug,
+    repo_name,
+    number,
+    author_user_id,
+    body,
+    nullable_text(file_path),
+    case line {
+      option.Some(n) -> n
+      option.None -> 0
+    },
+  )
+  |> result_map_first_row
+  |> result.map(mr_comment_from_insert_row)
+}
+
+fn mr_from_list_row(row: sql.MrListRow) -> MergeRequestRow {
+  mr_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.author_user_id,
+    row.source_branch,
+    row.target_branch,
+    row.state,
+    row.merge_commit_sha,
+    row.merged_by_user_id,
+    row.merged_at,
+    row.closed_at,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn mr_from_get_row(row: sql.MrGetRow) -> MergeRequestRow {
+  mr_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.author_user_id,
+    row.source_branch,
+    row.target_branch,
+    row.state,
+    row.merge_commit_sha,
+    row.merged_by_user_id,
+    row.merged_at,
+    row.closed_at,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn mr_from_insert_row(row: sql.MrInsertRow) -> MergeRequestRow {
+  mr_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.author_user_id,
+    row.source_branch,
+    row.target_branch,
+    row.state,
+    row.merge_commit_sha,
+    row.merged_by_user_id,
+    row.merged_at,
+    row.closed_at,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn mr_from_merge_row(row: sql.MrMergeRow) -> MergeRequestRow {
+  mr_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.author_user_id,
+    row.source_branch,
+    row.target_branch,
+    row.state,
+    row.merge_commit_sha,
+    row.merged_by_user_id,
+    row.merged_at,
+    row.closed_at,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn mr_from_close_row(row: sql.MrCloseRow) -> MergeRequestRow {
+  mr_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.author_user_id,
+    row.source_branch,
+    row.target_branch,
+    row.state,
+    row.merge_commit_sha,
+    row.merged_by_user_id,
+    row.merged_at,
+    row.closed_at,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn mr_row(
+  id: String,
+  number: Int,
+  title: String,
+  description: Option(String),
+  author_user_id: String,
+  source_branch: String,
+  target_branch: String,
+  state: String,
+  merge_commit_sha: Option(String),
+  merged_by_user_id: Option(String),
+  merged_at: String,
+  closed_at: String,
+  created_at: String,
+  updated_at: String,
+) -> MergeRequestRow {
+  MergeRequestRow(
+    id:,
+    number:,
+    title:,
+    description:,
+    author_user_id:,
+    source_branch:,
+    target_branch:,
+    state:,
+    merge_commit_sha:,
+    merged_by_user_id:,
+    merged_at: optional_timestamp(merged_at),
+    closed_at: optional_timestamp(closed_at),
+    created_at:,
+    updated_at:,
+  )
+}
+
+fn optional_timestamp(value: String) -> Option(String) {
+  case string.trim(value) {
+    "" -> option.None
+    trimmed -> option.Some(trimmed)
+  }
+}
+
+fn mr_comment_from_list_row(row: sql.MrCommentsListRow) -> MergeRequestCommentRow {
+  mr_comment_row(
+    row.id,
+    row.author_user_id,
+    row.body,
+    row.file_path,
+    row.line,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn mr_comment_from_insert_row(row: sql.MrCommentsInsertRow) -> MergeRequestCommentRow {
+  mr_comment_row(
+    row.id,
+    row.author_user_id,
+    row.body,
+    row.file_path,
+    row.line,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn mr_comment_row(
+  id: String,
+  author_user_id: String,
+  body: String,
+  file_path: Option(String),
+  line: Option(Int),
+  created_at: String,
+  updated_at: String,
+) -> MergeRequestCommentRow {
+  MergeRequestCommentRow(
+    id:,
+    author_user_id:,
+    body:,
+    file_path:,
+    line:,
+    created_at:,
+    updated_at:,
+  )
 }
 
 fn org_from_list_row(row: sql.OrgsListForUserRow) -> OrgRow {

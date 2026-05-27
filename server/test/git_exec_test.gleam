@@ -63,3 +63,31 @@ pub fn browse_fixture_repo_test() {
 
   cleanup_fixture_repo(git_dir)
 }
+
+pub fn merge_request_git_ops_test() {
+  let git_dir = setup_fixture_repo()
+  let assert Ok(Nil) = git_exec.branch_exists(git_dir, "main")
+  let assert Ok(Nil) = git_exec.branch_exists(git_dir, "feature")
+  let assert Error(_) = git_exec.branch_exists(git_dir, "nope")
+
+  let assert Ok(base) = git_exec.merge_base(git_dir, "main", "feature")
+  let assert True = base != ""
+
+  let assert Ok(commits) = git_exec.commits_between(git_dir, "main", "feature")
+  let assert True = list.length(commits) >= 1
+
+  let assert Ok(files) = git_exec.diff_summary(git_dir, "main", "feature")
+  let assert True =
+    list.any(files, fn(f) { f.path == "feature.txt" })
+
+  let assert Ok(patch) = git_exec.diff_patch(git_dir, "main", "feature", "feature.txt")
+  let assert True = string.contains(patch, "feature branch")
+
+  let assert Ok(check) = git_exec.can_merge(git_dir, "main", "feature")
+  let assert True = check.mergeable
+
+  let assert Ok(sha) = git_exec.merge_branches(git_dir, "main", "feature")
+  let assert True = sha != ""
+
+  cleanup_fixture_repo(git_dir)
+}

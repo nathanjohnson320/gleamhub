@@ -504,11 +504,20 @@ pub fn view(model: Model) -> Element(Msg) {
     ),
     div([attr.class("repo-header mb-4")], [
       h2([attr.class("text-2xl font-bold text-gh-ink")], [text(title)]),
-      case clone_url {
-        "" -> text("")
-        url ->
-          p([attr.class("mt-2 " <> components.code_block)], [text(url)])
-      },
+      div([attr.class("mt-2 flex flex-wrap items-center gap-3")], [
+        a(
+          [
+            attr.href(routes.mr_list_path(model.org_slug, model.repo_name)),
+            attr.class("text-sm font-medium text-gh-accent hover:underline"),
+          ],
+          [text("Merge requests")],
+        ),
+        case clone_url {
+          "" -> text("")
+          url ->
+            p([attr.class(components.code_block)], [text(url)])
+        },
+      ]),
     ]),
     error,
     case model.loading {

@@ -134,6 +134,30 @@
   @apply block bg-transparent p-0;
 }
 
+.diff-patch {
+  @apply list-none p-0 m-0 font-mono text-xs;
+}
+
+.diff-line {
+  @apply flex flex-wrap items-baseline gap-1 px-2 py-0.5;
+}
+
+.diff-add {
+  @apply bg-emerald-50;
+}
+
+.diff-del {
+  @apply bg-red-50;
+}
+
+.diff-meta {
+  @apply text-gh-muted font-semibold;
+}
+
+.diff-lineno {
+  @apply inline-block min-w-[2rem] text-right;
+}
+
 .markdown-body a {
   @apply text-gh-accent hover:underline;
 }

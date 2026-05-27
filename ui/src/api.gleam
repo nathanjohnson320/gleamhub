@@ -164,6 +164,210 @@ pub fn blob_decoder() -> decode.Decoder(BlobView) {
   decode.success(BlobView(ref:, path:, content:, encoding:, size:, binary:))
 }
 
+pub type MergeRequest {
+  MergeRequest(
+    id: String,
+    number: Int,
+    title: String,
+    description: option.Option(String),
+    author_user_id: String,
+    source_branch: String,
+    target_branch: String,
+    state: String,
+    merge_commit_sha: option.Option(String),
+    merged_at: option.Option(String),
+    closed_at: option.Option(String),
+    created_at: String,
+  )
+}
+
+pub type MergeCheck {
+  MergeCheck(mergeable: Bool, message: String)
+}
+
+pub type MergeRequestDetail {
+  MergeRequestDetail(merge_request: MergeRequest, merge_check: MergeCheck)
+}
+
+pub type MrComment {
+  MrComment(
+    id: String,
+    author_user_id: String,
+    body: String,
+    file_path: option.Option(String),
+    line: option.Option(Int),
+    created_at: String,
+  )
+}
+
+pub type MrCommit {
+  MrCommit(sha: String, subject: String, author: String, committed_at: String)
+}
+
+pub type DiffFile {
+  DiffFile(
+    path: String,
+    status: String,
+    additions: Int,
+    deletions: Int,
+  )
+}
+
+pub fn merge_request_decoder() -> decode.Decoder(MergeRequest) {
+  use id <- decode.field("id", decode.string)
+  use number <- decode.field("number", decode.int)
+  use title <- decode.field("title", decode.string)
+  use description <- decode.field("description", decode.optional(decode.string))
+  use author_user_id <- decode.field("author_user_id", decode.string)
+  use source_branch <- decode.field("source_branch", decode.string)
+  use target_branch <- decode.field("target_branch", decode.string)
+  use state <- decode.field("state", decode.string)
+  use merge_commit_sha <- decode.field(
+    "merge_commit_sha",
+    decode.optional(decode.string),
+  )
+  use merged_at <- decode.field("merged_at", decode.optional(decode.string))
+  use closed_at <- decode.field("closed_at", decode.optional(decode.string))
+  use created_at <- decode.field("created_at", decode.string)
+  decode.success(MergeRequest(
+    id:,
+    number:,
+    title:,
+    description:,
+    author_user_id:,
+    source_branch:,
+    target_branch:,
+    state:,
+    merge_commit_sha:,
+    merged_at:,
+    closed_at:,
+    created_at:,
+  ))
+}
+
+pub fn merge_requests_decoder() -> decode.Decoder(List(MergeRequest)) {
+  use mrs <- decode.field("merge_requests", decode.list(merge_request_decoder()))
+  decode.success(mrs)
+}
+
+pub fn merge_request_detail_decoder() -> decode.Decoder(MergeRequestDetail) {
+  use merge_request <- decode.field("merge_request", merge_request_decoder())
+  use merge_check <- decode.field("merge_check", merge_check_decoder())
+  decode.success(MergeRequestDetail(merge_request:, merge_check:))
+}
+
+pub fn merge_check_decoder() -> decode.Decoder(MergeCheck) {
+  use mergeable <- decode.field("mergeable", decode.bool)
+  use message <- decode.field("message", decode.string)
+  decode.success(MergeCheck(mergeable:, message:))
+}
+
+pub fn mr_comments_decoder() -> decode.Decoder(List(MrComment)) {
+  use comments <- decode.field("comments", decode.list(mr_comment_decoder()))
+  decode.success(comments)
+}
+
+pub fn mr_comment_decoder() -> decode.Decoder(MrComment) {
+  use id <- decode.field("id", decode.string)
+  use author_user_id <- decode.field("author_user_id", decode.string)
+  use body <- decode.field("body", decode.string)
+  use file_path <- decode.field("file_path", decode.optional(decode.string))
+  use line <- decode.field("line", decode.optional(decode.int))
+  use created_at <- decode.field("created_at", decode.string)
+  decode.success(MrComment(
+    id:,
+    author_user_id:,
+    body:,
+    file_path:,
+    line:,
+    created_at:,
+  ))
+}
+
+pub fn mr_commits_decoder() -> decode.Decoder(List(MrCommit)) {
+  use commits <- decode.field("commits", decode.list(mr_commit_decoder()))
+  decode.success(commits)
+}
+
+pub fn mr_commit_decoder() -> decode.Decoder(MrCommit) {
+  use sha <- decode.field("sha", decode.string)
+  use subject <- decode.field("subject", decode.string)
+  use author <- decode.field("author", decode.string)
+  use committed_at <- decode.field("committed_at", decode.string)
+  decode.success(MrCommit(sha:, subject:, author:, committed_at:))
+}
+
+pub fn diff_files_decoder() -> decode.Decoder(List(DiffFile)) {
+  use files <- decode.field("files", decode.list(diff_file_decoder()))
+  decode.success(files)
+}
+
+pub fn diff_file_decoder() -> decode.Decoder(DiffFile) {
+  use path <- decode.field("path", decode.string)
+  use status <- decode.field("status", decode.string)
+  use additions <- decode.field("additions", decode.int)
+  use deletions <- decode.field("deletions", decode.int)
+  decode.success(DiffFile(path:, status:, additions:, deletions:))
+}
+
+pub fn diff_patch_decoder() -> decode.Decoder(String) {
+  use patch <- decode.field("patch", decode.string)
+  decode.success(patch)
+}
+
+pub fn mr_create_error_decoder() -> decode.Decoder(#(String, option.Option(Int))) {
+  use error <- decode.field("error", decode.string)
+  use existing_number <- decode.field(
+    "existing_number",
+    decode.optional(decode.int),
+  )
+  decode.success(#(error, existing_number))
+}
+
+pub fn create_mr_body(
+  title: String,
+  description: option.Option(String),
+  source_branch: String,
+  target_branch: String,
+) -> json.Json {
+  json.object([
+    #("title", json.string(title)),
+    #(
+      "description",
+      case description {
+        option.Some(d) -> json.string(d)
+        option.None -> json.null()
+      },
+    ),
+    #("source_branch", json.string(source_branch)),
+    #("target_branch", json.string(target_branch)),
+  ])
+}
+
+pub fn create_mr_comment_body(
+  body: String,
+  file_path: option.Option(String),
+  line: option.Option(Int),
+) -> json.Json {
+  json.object([
+    #("body", json.string(body)),
+    #(
+      "file_path",
+      case file_path {
+        option.Some(p) -> json.string(p)
+        option.None -> json.null()
+      },
+    ),
+    #(
+      "line",
+      case line {
+        option.Some(n) -> json.int(n)
+        option.None -> json.null()
+      },
+    ),
+  ])
+}
+
 pub fn create_key_body(title: String, public_key: String) -> json.Json {
   json.object([
     #("title", json.string(title)),

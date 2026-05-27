@@ -47,6 +47,22 @@ pub fn tree_ref_path(ref: String, path: String) -> String {
   }
 }
 
+/// Branch names must be a single ref segment (no `/..` or absolute paths).
+pub fn normalize_branch(name: String) -> Result(String, PathError) {
+  let trimmed = string.trim(name)
+  case trimmed {
+    "" -> Error(InvalidPath)
+    _ ->
+      case string.contains(trimmed, "..")
+        || string.starts_with(trimmed, "/")
+        || string.contains(trimmed, "//")
+      {
+        True -> Error(InvalidPath)
+        False -> Ok(trimmed)
+      }
+  }
+}
+
 pub fn parent_path(path: String) -> option.Option(String) {
   case string.split(path, on: "/") {
     [] -> option.None

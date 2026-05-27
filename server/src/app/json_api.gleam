@@ -1,9 +1,10 @@
 import app/database.{
-  type KeyRow, type OrgRow, type RepoRow, type UserRow,
+  type KeyRow, type MergeRequestCommentRow, type MergeRequestRow, type OrgRow,
+  type RepoRow, type UserRow,
 }
 import app/git_exec.{
-  type BlobContent, type TreeEntry, type TreeEntryType, Blob, Submodule, Symlink,
-  Tree,
+  type BlobContent, type CommitEntry, type DiffFile, type MergeCheck,
+  type TreeEntry, type TreeEntryType, Blob, Submodule, Symlink, Tree,
 }
 import gleam/json
 import gleam/option
@@ -162,5 +163,107 @@ pub fn blob_json(ref: String, path: String, blob: BlobContent) -> json.Json {
     #("encoding", json.string(blob.encoding)),
     #("size", json.int(blob.size)),
     #("binary", json.bool(blob.binary)),
+  ])
+}
+
+fn optional_string(value: option.Option(String)) -> json.Json {
+  case value {
+    option.Some(text) -> json.string(text)
+    option.None -> json.null()
+  }
+}
+
+pub fn merge_request_json(mr: MergeRequestRow) -> json.Json {
+  json.object([
+    #("id", json.string(mr.id)),
+    #("number", json.int(mr.number)),
+    #("title", json.string(mr.title)),
+    #("description", optional_string(mr.description)),
+    #("author_user_id", json.string(mr.author_user_id)),
+    #("source_branch", json.string(mr.source_branch)),
+    #("target_branch", json.string(mr.target_branch)),
+    #("state", json.string(mr.state)),
+    #("merge_commit_sha", optional_string(mr.merge_commit_sha)),
+    #("merged_by_user_id", optional_string(mr.merged_by_user_id)),
+    #("merged_at", optional_string(mr.merged_at)),
+    #("closed_at", optional_string(mr.closed_at)),
+    #("created_at", json.string(mr.created_at)),
+    #("updated_at", json.string(mr.updated_at)),
+  ])
+}
+
+pub fn merge_requests_json(mrs: List(MergeRequestRow)) -> json.Json {
+  json.object([
+    #("merge_requests", json.array(mrs, of: merge_request_json)),
+  ])
+}
+
+pub fn merge_request_comment_json(comment: MergeRequestCommentRow) -> json.Json {
+  json.object([
+    #("id", json.string(comment.id)),
+    #("author_user_id", json.string(comment.author_user_id)),
+    #("body", json.string(comment.body)),
+    #("file_path", optional_string(comment.file_path)),
+    #(
+      "line",
+      case comment.line {
+        option.Some(n) -> json.int(n)
+        option.None -> json.null()
+      },
+    ),
+    #("created_at", json.string(comment.created_at)),
+    #("updated_at", json.string(comment.updated_at)),
+  ])
+}
+
+pub fn merge_request_comments_json(
+  comments: List(MergeRequestCommentRow),
+) -> json.Json {
+  json.object([
+    #("comments", json.array(comments, of: merge_request_comment_json)),
+  ])
+}
+
+pub fn commits_json(commits: List(CommitEntry)) -> json.Json {
+  json.object([
+    #(
+      "commits",
+      json.array(commits, of: fn(c) {
+        json.object([
+          #("sha", json.string(c.sha)),
+          #("subject", json.string(c.subject)),
+          #("author", json.string(c.author)),
+          #("committed_at", json.string(c.committed_at)),
+        ])
+      }),
+    ),
+  ])
+}
+
+pub fn diff_files_json(files: List(DiffFile)) -> json.Json {
+  json.object([
+    #(
+      "files",
+      json.array(files, of: fn(f) {
+        json.object([
+          #("path", json.string(f.path)),
+          #("old_path", optional_string(f.old_path)),
+          #("status", json.string(f.status)),
+          #("additions", json.int(f.additions)),
+          #("deletions", json.int(f.deletions)),
+        ])
+      }),
+    ),
+  ])
+}
+
+pub fn diff_patch_json(path: String, patch: String) -> json.Json {
+  json.object([#("path", json.string(path)), #("patch", json.string(patch))])
+}
+
+pub fn merge_check_json(check: MergeCheck) -> json.Json {
+  json.object([
+    #("mergeable", json.bool(check.mergeable)),
+    #("message", json.string(check.message)),
   ])
 }

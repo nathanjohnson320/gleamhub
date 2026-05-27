@@ -81,11 +81,18 @@ pub fn git_error_response(error: git_exec.GitError) -> Response {
   case error {
     git_exec.NotFound -> wisp.not_found()
     git_exec.InvalidPath -> wisp.bad_request("Invalid path")
+    git_exec.InvalidBranch -> wisp.bad_request("Invalid branch")
     git_exec.NotATree -> wisp.bad_request("Not a directory")
     git_exec.BlobTooLarge -> wisp.content_too_large()
     git_exec.NoBranches -> wisp.not_found()
+    git_exec.MergeConflict(msg) -> wisp.response(409) |> wisp.json_body(error_json(msg))
     git_exec.GitCommandFailed(_) -> wisp.internal_server_error()
   }
+}
+
+fn error_json(message: String) -> String {
+  json.object([#("error", json.string(message))])
+  |> json.to_string
 }
 
 pub fn get_repo_detail(
