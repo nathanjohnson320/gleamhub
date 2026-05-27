@@ -79,9 +79,18 @@ pub fn on_load(config: Config, model: Model) -> Effect(Msg) {
       effect.batch([
         load_detail(config, model),
         load_branches(config, model),
+      ])
+  }
+}
+
+fn home_content_effects(config: Config, model: Model) -> Effect(Msg) {
+  case model.mode, model.ref {
+    Home, ref if ref != "" ->
+      effect.batch([
         load_readme(config, model),
         load_tree(config, model),
       ])
+    _, _ -> effect.none()
   }
 }
 
@@ -106,26 +115,35 @@ fn load_branches(config: Config, model: Model) -> Effect(Msg) {
 }
 
 fn load_readme(config: Config, model: Model) -> Effect(Msg) {
-  lustre_http.get(
-    config,
-    api_base(config, model)
-      <> "/readme?ref="
-      <> uri.percent_encode(model.ref),
-    lustre_http.expect_json(api.readme_decoder(), LoadedReadme),
-  )
+  case model.ref {
+    "" -> effect.none()
+    _ ->
+      lustre_http.get(
+        config,
+        api_base(config, model)
+          <> "/readme?ref="
+          <> uri.percent_encode(model.ref),
+        lustre_http.expect_json(api.readme_decoder(), LoadedReadme),
+      )
+  }
 }
 
 fn load_tree(config: Config, model: Model) -> Effect(Msg) {
-  let base = api_base(config, model) <> "/tree/" <> model.ref
-  let url = case model.path {
-    "" -> base
-    _ -> base <> "/" <> model.path
+  case model.ref {
+    "" -> effect.none()
+    ref -> {
+      let base = api_base(config, model) <> "/tree/" <> uri.percent_encode(ref)
+      let url = case model.path {
+        "" -> base
+        _ -> base <> "/" <> model.path
+      }
+      lustre_http.get(
+        config,
+        url,
+        lustre_http.expect_json(api.tree_decoder(), LoadedTree),
+      )
+    }
   }
-  lustre_http.get(
-    config,
-    url,
-    lustre_http.expect_json(api.tree_decoder(), LoadedTree),
-  )
 }
 
 fn load_blob(config: Config, model: Model) -> Effect(Msg) {
@@ -151,33 +169,48 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
           }
         _ -> model.ref
       }
-      #(
+      let had_ref = model.ref != ""
+      let model =
         Model(
           ..model,
           detail: option.Some(detail),
           ref:,
           loading: False,
           error: option.None,
-        ),
-        effect.none(),
+        )
+      #(
+        model,
+        case had_ref {
+          False -> home_content_effects(config, model)
+          True -> effect.none()
+        },
       )
     }
     LoadedDetail(Error(_)) -> #(
       Model(..model, loading: False, error: option.Some("Repository not found")),
       effect.none(),
     )
-    LoadedBranches(Ok(branches)) -> #(
-      Model(
-        ..model,
-        branches:,
-        empty_repo: branches == [],
-        ref: case model.ref {
-          "" -> default_ref(branches)
-          r -> r
+    LoadedBranches(Ok(branches)) -> {
+      let ref = case model.ref {
+        "" -> default_ref(branches)
+        r -> r
+      }
+      let had_ref = model.ref != ""
+      let model =
+        Model(
+          ..model,
+          branches:,
+          empty_repo: branches == [],
+          ref:,
+        )
+      #(
+        model,
+        case had_ref {
+          False -> home_content_effects(config, model)
+          True -> effect.none()
         },
-      ),
-      effect.none(),
-    )
+      )
+    }
     LoadedBranches(Error(_)) -> #(
       Model(..model, branches: [], empty_repo: True),
       effect.none(),
@@ -459,8 +492,8 @@ pub fn view(model: Model) -> Element(Msg) {
     False, Home ->
       div([], [
         toolbar(model),
+        div([attr.class(components.card <> " mb-6")], [file_table(model)]),
         readme_section(model),
-        div([attr.class(components.card)], [file_table(model)]),
       ])
   }
 

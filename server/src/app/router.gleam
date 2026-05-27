@@ -56,6 +56,8 @@ pub fn handle_request(req: Request, ctx: Context) -> Response {
                 _ -> wisp.method_not_allowed([http.Get, http.Post])
               }
             }
+            ["api", "orgs", slug, "repos", name, "tree"] ->
+              repo_browse_routes.get_repo_tree_root(req, ctx, slug, name)
             ["api", "orgs", slug, "repos", name, "tree", ref, ..path] ->
               repo_browse_routes.get_repo_tree(req, ctx, slug, name, ref, path)
             ["api", "orgs", slug, "repos", name, "blob", ref, ..path] ->

@@ -160,6 +160,15 @@ pub fn get_repo_readme(
   }
 }
 
+pub fn get_repo_tree_root(
+  req: Request,
+  ctx: Context,
+  org_slug: String,
+  name: String,
+) -> Response {
+  get_repo_tree(req, ctx, org_slug, name, query_param(req, "ref"), [])
+}
+
 pub fn get_repo_tree(
   req: Request,
   ctx: Context,
