@@ -1,10 +1,125 @@
 # Gleamhub
 
-Gleam-native Git hosting MVP — multi-tenant platform (Tier 1): one deploy, all organizations.
+Gleam-native Git hosting MVP: Clerk sign-in, orgs/repos in the browser, SSH clone/push/pull to bare repos on disk.
 
-- **Web**: Clerk sign-in, Lustre UI, Wisp API
-- **Git**: SSH clone/push/pull to bare repos on disk at `{org_slug}/{repo}.git`
-- **Auth**: Clerk JWT for `/api/*`; SSH public keys for git (no Bearer on git)
+## 5-minute setup
+
+**You need:** [Docker](https://www.docker.com/), [Node.js](https://nodejs.org/) (for the UI dev server), and a [Clerk](https://clerk.com/) app (or use the example env files if your team shares the dev Clerk instance).
+
+```bash
+git clone https://github.com/nathanjohnson320/gleamhub.git
+cd gleamhub
+
+# 1. Env files (edit only if you use your own Clerk app — see below)
+cp .env.example .env
+cp server/.env.example server/.env
+cp ui/.env.example ui/.env
+
+# 2. Start Postgres, API, git-ssh, and built UI
+docker compose up --build
+```
+
+In a **second terminal** (hot-reload UI — recommended for frontend work):
+
+```bash
+cd ui && npm install && npm run dev
+```
+
+| What | URL |
+|------|-----|
+| App (production build from Docker) | http://localhost:9999 |
+| App (Vite dev — use this while hacking UI) | http://localhost:5173 |
+| Git SSH | `ssh://git@localhost:2222/{org}/{repo}.git` |
+
+Sign in → **Organizations** → create an org → add a repo → **SSH keys** → paste your public key → clone/push (see [Try git over SSH](#try-git-over-ssh)).
+
+### Clerk (only if example keys do not work)
+
+Use **one** Clerk application for both server and UI.
+
+1. [Clerk Dashboard](https://dashboard.clerk.com/) → your app → **API keys** → copy **Publishable key** into `ui/.env`:
+
+   ```bash
+   VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
+   ```
+
+2. Copy a signing **JWK** into **both** `/.env` (for Docker) and `server/.env` (for local `gleam run`):
+
+   ```bash
+   CLERK_JWKS='{"use":"sig","kty":"RSA","kid":"...","alg":"RS256","n":"...","e":"AQAB"}'
+   ```
+
+   The server expects a **single RSA JWK object** (not the full JWKS array). You can take the first key from your Clerk JWKS URL (`https://<your-clerk-domain>/.well-known/jwks.json`) or match the format in `server/.env.example`.
+
+3. Restart: `docker compose up --build` (and `npm run dev` in `ui/` if it was already running).
+
+If the UI shows **Unauthorized**, `CLERK_JWKS` and `VITE_CLERK_PUBLISHABLE_KEY` are from different Clerk apps or the JWK is malformed.
+
+---
+
+## Try git over SSH
+
+After creating org `acme` and repo `demo` in the UI:
+
+```bash
+git clone ssh://git@localhost:2222/acme/demo.git
+cd demo
+echo "# hello" >> README.md
+git add README.md && git commit -m "init"
+git push origin main
+```
+
+First push to an empty repo on port 2222:
+
+```bash
+ssh-keygen -R '[localhost]:2222'   # if host key changed after container rebuild
+```
+
+Repos on disk: `server/data/repos/{org}/{repo}.git`
+
+---
+
+## Local development (Gleam + Vite)
+
+For server/UI code changes without rebuilding the server image every time:
+
+```bash
+# Terminal 1 — database
+docker compose up postgres -d
+
+# Terminal 2 — API
+cd server
+cp .env.example .env    # CLERK_JWKS + DATABASE_URL
+npm install
+npm run db:up
+gleam run               # http://localhost:9999
+
+# Terminal 3 — UI
+cd ui
+cp .env.example .env
+npm install
+npm run dev             # http://localhost:5173
+
+# Terminal 4 — git SSH (still Docker)
+docker compose up git-ssh -d
+```
+
+- Vite proxies `/api` to port 9999.
+- `git-ssh` uses `GLEAMHUB_API_URL=http://host.docker.internal:9999` by default (Mac/Windows). On Linux, set `GLEAMHUB_API_URL=http://172.17.0.1:9999` in `.env` if needed.
+
+**SQL changes:** edit `server/src/app/sql/*.sql`, then:
+
+```bash
+cd server && npm run db:up && npm run db:gen:sql
+```
+
+**Ship UI into the server static bundle:**
+
+```bash
+cd ui && npm run build   # writes to server/priv/static
+```
+
+---
 
 ## Architecture
 
@@ -25,126 +140,16 @@ flowchart TB
   SSH --> Vol
 ```
 
-Repos live at `$GIT_REPOS_ROOT/{org_slug}/{repo}.git` (default `./data/repos` locally, `/data/repos` in Docker).
-
-Clone URL: `ssh://git@{GLEAMHUB_GIT_HOST}:2222/{org}/{repo}.git`
-
-## Project structure
-
 | Path | Role |
 |------|------|
-| `common/` | Shared types (if needed) |
-| `server/` | Wisp API, Postgres (pog), migrations, internal SSH routes |
+| `server/` | Wisp API, Postgres (pog), migrations, git read/browse APIs |
 | `ui/` | Lustre + Vite + Clerk |
 | `git-ssh/` | OpenSSH + scripts calling internal API |
 | `docker-compose.yml` | Postgres + server + git-ssh |
 
-## Prerequisites
+Repos: `$GIT_REPOS_ROOT/{org_slug}/{repo}.git` (default `./server/data/repos` locally).
 
-- [Gleam](https://gleam.run/getting-started/) and Erlang/OTP
-- [Node.js](https://nodejs.org/) (UI + dbmate)
-- [Docker](https://www.docker.com/) (optional, recommended for git-ssh + Postgres)
-- A [Clerk](https://clerk.com/) application (same pattern as `estonian`)
-
-## Quick start (Docker)
-
-1. Copy Clerk env from **estonian** (same app for both projects):
-
-   ```bash
-   cp server/.env.example server/.env
-   cp ui/.env.example ui/.env
-   # Or copy directly:
-   grep CLERK_JWKS ../estonian/server/.env >> server/.env
-   grep VITE_CLERK ../estonian/ui/.env >> ui/.env
-   ```
-
-   Estonian pattern: `CLERK_JWKS` (single RSA JWK) in `server/.env`, `VITE_CLERK_PUBLISHABLE_KEY` in `ui/.env`. Gleamhub uses the same `verify_key.decoder()` and `clerk` middleware as estonian.
-
-2. Build and start the platform:
-
-   ```bash
-   docker compose up --build
-   ```
-
-   - API + SPA: http://localhost:9999
-   - Git SSH: `localhost:2222` (user `git`)
-   - Migrations run automatically on server start
-
-3. For UI development against the API, in another terminal:
-
-   ```bash
-   cd ui && npm install && npm run dev
-   ```
-
-   Visit http://localhost:5173 (CORS allows 5173 → API on 9999).
-
-## Local development (without Docker server)
-
-1. Start Postgres (or `docker compose up postgres -d`). Compose publishes **5432** to the host so local `gleam run` can use `DATABASE_URL=...@127.0.0.1:5432/gleamhub`.
-
-2. Migrate and run the server:
-
-   ```bash
-   cd server
-   cp .env.example .env   # set CLERK_JWKS
-   npm install
-   npm run db:up
-   gleam run
-   ```
-
-   SQL queries live in `server/src/app/sql/*.sql`. After changing them, regenerate typed pog code:
-
-   ```bash
-   cd server
-   npm run db:gen:sql    # gleam run -m squirrel → src/app/sql.gleam
-   ```
-
-   Requires `DATABASE_URL` (from `.env`) and an up-to-date schema (`npm run db:up`).
-
-3. Build UI into `server/priv/static` or use Vite dev:
-
-   ```bash
-   cd ui
-   cp .env.example .env
-   npm install
-   npm run dev          # dev server
-   # or: npm run build  # production assets for Wisp
-   ```
-
-4. Git over SSH still needs `git-ssh` (Docker is easiest):
-
-   ```bash
-   # API must be listening (gleam run in server/, or docker compose up server -d)
-   docker compose up git-ssh -d
-   # git-ssh calls the API at GLEAMHUB_API_URL (default http://host.docker.internal:9999)
-   # Repos are bind-mounted from server/data/repos (same as local gleam run)
-   ```
-
-   On Linux, if `host.docker.internal` is missing, set `GLEAMHUB_API_URL=http://172.17.0.1:9999` or add `extra_hosts` for git-ssh.
-
-## End-to-end verification
-
-1. Open http://localhost:9999 (or Vite on 5173) and sign in with Clerk.
-2. **Organizations** → create org (e.g. `acme`).
-3. Open the org → **Create repository** (e.g. `demo`).
-4. **SSH keys** → paste your `~/.ssh/id_ed25519.pub` (or generate one).
-5. Clone and push:
-
-   ```bash
-   git clone ssh://git@localhost:2222/acme/demo.git
-   cd demo
-   echo "# hello" >> README.md
-   git add README.md && git commit -m "init"
-   git push origin main
-   ```
-
-6. Confirm bare repo on disk:
-
-   ```bash
-   ls -la server/data/repos/acme/demo.git   # local server
-   # or inside compose:
-   docker compose exec server ls -la /data/repos/acme/demo.git
-   ```
+---
 
 ## API surface
 
@@ -153,27 +158,36 @@ Clone URL: `ssh://git@{GLEAMHUB_GIT_HOST}:2222/{org}/{repo}.git`
 | `GET/POST /api/orgs` | Clerk JWT |
 | `GET /api/orgs/:slug` | Clerk JWT + member |
 | `GET/POST /api/orgs/:slug/repos` | Clerk JWT + member |
+| `GET /api/orgs/:slug/repos/:name` | Clerk JWT + member |
+| `GET .../repos/:name/branches` | Clerk JWT + member |
+| `GET .../repos/:name/readme?ref=` | Clerk JWT + member |
+| `GET .../repos/:name/tree/:ref/...` | Clerk JWT + member |
+| `GET .../repos/:name/blob/:ref/...` | Clerk JWT + member |
 | `GET/POST/DELETE /api/ssh-keys` | Clerk JWT |
-| `GET /internal/ssh/authorized_keys?k=` | Docker network only |
-| `GET /internal/ssh/access?org=&repo=&user_id=&op=` | Docker network only |
+| `GET /internal/ssh/authorized_keys` | Docker network only |
+| `GET /internal/ssh/access` | Docker network only |
 
-Git ops: org members with a registered key can **read** (`upload-pack`) and **write** (`receive-pack`) to all repos in that org (MVP — no per-repo ACL).
+Org members with a registered SSH key can read/write all repos in that org (MVP — no per-repo ACL).
+
+---
 
 ## Environment variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SECRET_KEY_BASE` | (required) | Wisp session signing |
-| `DATABASE_URL` | (required) | Postgres connection |
-| `CLERK_JWKS` | required | Single RSA JWK JSON — copy from `estonian/server/.env` |
-| `GIT_REPOS_ROOT` | `./data/repos` | Bare repo root |
-| `GLEAMHUB_GIT_HOST` | `localhost` | Host in clone URLs |
-| `PORT` | `9999` | HTTP port |
-| `VITE_CLERK_PUBLISHABLE_KEY` | (required in UI) | Clerk frontend key |
+| Variable | Where | Description |
+|----------|-------|-------------|
+| `CLERK_JWKS` | `/.env`, `server/.env` | Single RSA JWK JSON for JWT verification |
+| `VITE_CLERK_PUBLISHABLE_KEY` | `ui/.env` | Clerk publishable key |
+| `SECRET_KEY_BASE` | `/.env`, `server/.env` | Wisp session signing |
+| `DATABASE_URL` | `server/.env` | Postgres (Docker sets this in compose) |
+| `GIT_REPOS_ROOT` | `server/.env` | Bare repo directory |
+| `GLEAMHUB_GIT_HOST` | `/.env` | Hostname in clone URLs (`localhost`) |
+| `GLEAMHUB_API_URL` | `/.env` | git-ssh → API URL when server runs on host |
 
-## Deployment model (Tier 1)
+---
 
-Single platform deployment: one Wisp process, one git-ssh service, one Postgres, one volume. Updating the image updates every organization. Dedicated per-org stacks (Tier 2) are out of scope for this MVP.
+## Deployment
+
+Single platform deployment: one Wisp process, one git-ssh service, one Postgres, one shared repo volume. Per-org dedicated stacks are out of scope for this MVP.
 
 ## License
 
