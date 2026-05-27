@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 import gleam from "vite-gleam";
 
 export default defineConfig({
+  appType: "spa",
   plugins: [gleam(), tailwindcss()],
   server: {
     proxy: {

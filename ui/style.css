@@ -15,3 +15,82 @@
     @apply antialiased text-gh-ink;
   }
 }
+
+/* GitHub-style repository browser */
+.repo-toolbar {
+  @apply rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm;
+}
+
+.repo-readme-card {
+  @apply overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm;
+}
+
+.repo-file-table {
+  @apply text-sm;
+}
+
+.repo-file-table thead {
+  @apply border-b border-slate-200 bg-slate-50;
+}
+
+.repo-file-table th,
+.repo-file-table td {
+  @apply px-4 py-2.5;
+}
+
+.repo-file-row {
+  @apply border-b border-slate-100 transition hover:bg-slate-50;
+}
+
+.repo-file-row:last-child {
+  @apply border-b-0;
+}
+
+.repo-file-name {
+  @apply font-medium;
+}
+
+.markdown-body {
+  @apply text-sm leading-relaxed text-gh-ink;
+}
+
+.markdown-body h1 {
+  @apply mb-4 border-b border-slate-200 pb-2 text-2xl font-bold;
+}
+
+.markdown-body h2 {
+  @apply mb-3 mt-6 text-xl font-semibold;
+}
+
+.markdown-body h3 {
+  @apply mb-2 mt-4 text-lg font-semibold;
+}
+
+.markdown-body p {
+  @apply mb-4;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  @apply mb-4 ml-6 list-disc;
+}
+
+.markdown-body code {
+  @apply rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs;
+}
+
+.markdown-body pre {
+  @apply mb-4 overflow-x-auto rounded-lg bg-slate-900 p-4 font-mono text-xs text-slate-100;
+}
+
+.markdown-body pre code {
+  @apply bg-transparent p-0 text-inherit;
+}
+
+.markdown-body a {
+  @apply text-gh-accent hover:underline;
+}
+
+.markdown-body blockquote {
+  @apply mb-4 border-l-4 border-slate-300 pl-4 text-gh-muted;
+}

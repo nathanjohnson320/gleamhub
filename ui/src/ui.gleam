@@ -2,9 +2,7 @@ import auth
 import clerk_auth
 import components
 import config
-import gleam/list
 import gleam/option
-import gleam/string
 import gleam/uri.{type Uri}
 import lustre
 import lustre/attribute as attr
@@ -16,6 +14,11 @@ import modem
 import pages/keys
 import pages/org_repos
 import pages/orgs
+import pages/repo_view
+import routes.{
+  type Route, Keys, NotFound, OrgRepos, Orgs, RepoMissingOrg, RepoView,
+  from_uri,
+}
 
 pub fn main(
   pathname: String,
@@ -37,15 +40,9 @@ type Model {
     route: Route,
     orgs: orgs.Model,
     repos: option.Option(org_repos.Model),
+    repo_view: option.Option(repo_view.Model),
     keys: keys.Model,
   )
-}
-
-pub type Route {
-  Orgs
-  OrgRepos(String)
-  Keys
-  NotFound
 }
 
 type Flags {
@@ -56,6 +53,7 @@ pub type Msg {
   OnRouteChange(Route)
   OrgsMsg(orgs.Msg)
   ReposMsg(org_repos.Msg)
+  RepoViewMsg(repo_view.Msg)
   KeysMsg(keys.Msg)
   ClerkSessionUpdated(String)
   OpenAccount
@@ -64,7 +62,10 @@ pub type Msg {
 
 fn init(flags: Flags) -> #(Model, Effect(Msg)) {
   let config = config_from_auth(flags.api_url, flags.auth_user)
-  let route = parse_route(flags.path)
+  let route = case modem.initial_uri() {
+    Ok(uri) -> from_uri(uri)
+    Error(_) -> from_uri(flags.path)
+  }
 
   #(
     Model(
@@ -76,10 +77,11 @@ fn init(flags: Flags) -> #(Model, Effect(Msg)) {
         m
       },
       repos: repos_model(route),
+      repo_view: repo_view_model(route),
       keys: keys.init(),
     ),
     effect.batch([
-      modem.init(fn(u) { OnRouteChange(parse_route(u)) }),
+      modem.init(fn(u) { OnRouteChange(from_uri(u)) }),
       listen_clerk_session_change(),
       route_effect(config, route),
     ]),
@@ -121,25 +123,25 @@ fn repos_model(route: Route) -> option.Option(org_repos.Model) {
   }
 }
 
-fn parse_route(uri: Uri) -> Route {
-  case uri.path |> string.split(on: "/") |> list_filter_empty() {
-    [] -> Orgs
-    ["orgs"] -> Orgs
-    ["orgs", slug] -> OrgRepos(slug)
-    ["keys"] -> Keys
-    _ -> NotFound
+fn repo_view_model(route: Route) -> option.Option(repo_view.Model) {
+  case route {
+    RepoView(mode, org, repo, ref, path) ->
+      option.Some(repo_view.init(org, repo, mode, ref, path))
+    _ -> option.None
   }
-}
-
-fn list_filter_empty(items: List(String)) -> List(String) {
-  list.filter(items, fn(s) { s != "" })
 }
 
 fn route_effect(config: config.Config, route: Route) -> Effect(Msg) {
   case route {
     Orgs -> effect.map(orgs.on_load(config), OrgsMsg)
     OrgRepos(slug) -> effect.map(org_repos.on_load(config, slug), ReposMsg)
+    RepoView(_, _, _, _, _) ->
+      case repo_view_model(route) {
+        option.Some(m) -> effect.map(repo_view.on_load(config, m), RepoViewMsg)
+        option.None -> effect.none()
+      }
     Keys -> effect.map(keys.on_load(config), KeysMsg)
+    RepoMissingOrg(_) -> effect.none()
     NotFound -> effect.none()
   }
 }
@@ -147,7 +149,12 @@ fn route_effect(config: config.Config, route: Route) -> Effect(Msg) {
 fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   case msg {
     OnRouteChange(route) -> #(
-      Model(..model, route:, repos: repos_model(route)),
+      Model(
+        ..model,
+        route:,
+        repos: repos_model(route),
+        repo_view: repo_view_model(route),
+      ),
       route_effect(model.config, route),
     )
     OrgsMsg(m) -> {
@@ -158,7 +165,22 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       case model.repos {
         option.Some(repos) -> {
           let #(repos, eff) = org_repos.update(m, repos, model.config)
-          #(Model(..model, repos: option.Some(repos)), effect.map(eff, ReposMsg))
+          #(
+            Model(..model, repos: option.Some(repos)),
+            effect.map(eff, ReposMsg),
+          )
+        }
+        option.None -> #(model, effect.none())
+      }
+    }
+    RepoViewMsg(m) -> {
+      case model.repo_view {
+        option.Some(rv) -> {
+          let #(rv, eff) = repo_view.update(m, rv, model.config)
+          #(
+            Model(..model, repo_view: option.Some(rv)),
+            effect.map(eff, RepoViewMsg),
+          )
         }
         option.None -> #(model, effect.none())
       }
@@ -176,7 +198,12 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
   }
 }
 
-fn nav_link(route: Route, current: Route, path: String, label: String) -> Element(Msg) {
+fn nav_link(
+  route: Route,
+  current: Route,
+  path: String,
+  label: String,
+) -> Element(Msg) {
   let active = nav_active(current, route)
   let classes = case active {
     True -> "rounded-lg bg-white/15 px-3 py-2 text-sm font-semibold text-white"
@@ -192,6 +219,8 @@ fn nav_active(current: Route, link: Route) -> Bool {
     Keys, Keys -> True
     OrgRepos(_), Orgs -> False
     OrgRepos(_), Keys -> False
+    RepoView(_, _, _, _, _), Orgs -> False
+    RepoView(_, _, _, _, _), Keys -> False
     _, _ -> current == link
   }
 }
@@ -207,7 +236,11 @@ fn user_chip(user: auth.User) -> Element(Msg) {
       [text(user.initials)],
     ),
     span(
-      [attr.class("hidden max-w-[10rem] truncate text-sm text-white/90 sm:inline")],
+      [
+        attr.class(
+          "hidden max-w-[10rem] truncate text-sm text-white/90 sm:inline",
+        ),
+      ],
       [text(auth.display_name(user))],
     ),
   ])
@@ -225,7 +258,28 @@ fn view(model: Model) -> Element(Msg) {
           ])
       }
     }
+    RepoView(_, _, _, _, _) -> {
+      case model.repo_view {
+        option.Some(rv) -> repo_view.view(rv) |> map(RepoViewMsg)
+        option.None ->
+          div([attr.class(components.page)], [
+            components.empty_state("Loading repository…"),
+          ])
+      }
+    }
     Keys -> keys.view(model.keys) |> map(KeysMsg)
+    RepoMissingOrg(repo) ->
+      div([attr.class(components.page)], [
+        components.page_header(
+          "Repository link incomplete",
+          "The URL is missing the organization. Open "
+            <> repo
+            <> " from your organization's repository list.",
+        ),
+        a([attr.class(components.btn_primary), attr.href("/orgs")], [
+          text("Back to organizations"),
+        ]),
+      ])
     NotFound ->
       div([attr.class(components.page)], [
         components.page_header("Not found", "That page does not exist."),
@@ -237,7 +291,11 @@ fn view(model: Model) -> Element(Msg) {
 
   div([attr.class("min-h-screen bg-gh-surface")], [
     header(
-      [attr.class("border-b border-slate-800 bg-slate-900 text-white shadow-md")],
+      [
+        attr.class(
+          "border-b border-slate-800 bg-slate-900 text-white shadow-md",
+        ),
+      ],
       [
         div(
           [
@@ -246,19 +304,32 @@ fn view(model: Model) -> Element(Msg) {
             ),
           ],
           [
-            a([attr.href("/orgs"), attr.class("flex items-center gap-2 no-underline")], [
-              span(
-                [
-                  attr.class(
-                    "flex h-9 w-9 items-center justify-center rounded-lg bg-gh-accent text-sm font-bold text-white",
-                  ),
-                ],
-                [text("G")],
-              ),
-              span([attr.class("text-lg font-semibold tracking-tight text-white")], [
-                text("Gleamhub"),
-              ]),
-            ]),
+            a(
+              [
+                attr.href("/orgs"),
+                attr.class("flex items-center gap-2 no-underline"),
+              ],
+              [
+                span(
+                  [
+                    attr.class(
+                      "flex h-9 w-9 items-center justify-center rounded-lg bg-gh-accent text-sm font-bold text-white",
+                    ),
+                  ],
+                  [text("G")],
+                ),
+                span(
+                  [
+                    attr.class(
+                      "text-lg font-semibold tracking-tight text-white",
+                    ),
+                  ],
+                  [
+                    text("Gleamhub"),
+                  ],
+                ),
+              ],
+            ),
             nav([attr.class("flex flex-wrap items-center gap-1")], [
               nav_link(Orgs, model.route, "/orgs", "Organizations"),
               nav_link(Keys, model.route, "/keys", "SSH keys"),

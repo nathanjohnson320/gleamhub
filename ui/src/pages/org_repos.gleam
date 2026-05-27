@@ -6,9 +6,10 @@ import gleam/option
 import lustre/attribute as attr
 import lustre/effect.{type Effect}
 import lustre/element.{type Element, text}
-import lustre/element/html.{button, div, form, input, p}
+import lustre/element/html.{a, button, div, form, input, p}
 import lustre/event
 import lustre_http
+import routes
 
 pub type Model {
   Model(
@@ -128,7 +129,8 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
   }
 }
 
-fn repo_row(repo: Repo) -> Element(Msg) {
+fn repo_row(page_org_slug: String, repo: Repo) -> Element(Msg) {
+  let org_slug = routes.org_slug_for_repo(page_org_slug, repo.org_slug)
   div(
     [
       attr.class(
@@ -136,7 +138,13 @@ fn repo_row(repo: Repo) -> Element(Msg) {
       ),
     ],
     [
-      p([attr.class("font-semibold text-gh-ink")], [text(repo.name)]),
+      a(
+        [
+          attr.href(routes.repo_home_path(org_slug, repo.name)),
+          attr.class("font-semibold text-gh-ink hover:text-gh-accent"),
+        ],
+        [text(repo.name)],
+      ),
       div([attr.class("mt-3 flex items-center gap-3")], [
         p([attr.class("min-w-0 flex-1 " <> components.code_block)], [
           text(repo.clone_url),
@@ -157,7 +165,7 @@ fn repo_row(repo: Repo) -> Element(Msg) {
 pub fn view(model: Model) -> Element(Msg) {
   let repo_list = case model.repos {
     [] -> [components.empty_state("No repositories yet — add one below.")]
-    repos -> list.map(repos, repo_row)
+    repos -> list.map(repos, fn(r) { repo_row(model.org_slug, r) })
   }
 
   let confirm = case model.confirm_delete {

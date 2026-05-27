@@ -1,5 +1,6 @@
 import app/routes/api_routes
 import app/routes/clerk
+import app/routes/repo_browse_routes
 import app/routes/ssh_internal_routes
 import app/web.{type Context}
 import gleam/http
@@ -11,7 +12,7 @@ fn is_ui_route(segments: List(String)) -> Bool {
     [] -> True
     ["orgs"] -> True
     ["orgs", _] -> True
-    ["orgs", _, "repos", "new"] -> True
+    ["orgs", _, "repos", _, .._] -> True
     ["keys"] -> True
     ["profile"] -> True
     _ -> False
@@ -55,10 +56,20 @@ pub fn handle_request(req: Request, ctx: Context) -> Response {
                 _ -> wisp.method_not_allowed([http.Get, http.Post])
               }
             }
-            ["api", "orgs", slug, "repos", repo_ref] -> {
+            ["api", "orgs", slug, "repos", name, "tree", ref, ..path] ->
+              repo_browse_routes.get_repo_tree(req, ctx, slug, name, ref, path)
+            ["api", "orgs", slug, "repos", name, "blob", ref, ..path] ->
+              repo_browse_routes.get_repo_blob(req, ctx, slug, name, ref, path)
+            ["api", "orgs", slug, "repos", name, "branches"] ->
+              repo_browse_routes.list_repo_branches(req, ctx, slug, name)
+            ["api", "orgs", slug, "repos", name, "readme"] ->
+              repo_browse_routes.get_repo_readme(req, ctx, slug, name)
+            ["api", "orgs", slug, "repos", name] -> {
               case req.method {
-                http.Delete -> api_routes.delete_repo(req, ctx, slug, repo_ref)
-                _ -> wisp.method_not_allowed([http.Delete])
+                http.Get ->
+                  repo_browse_routes.get_repo_detail(req, ctx, slug, name)
+                http.Delete -> api_routes.delete_repo(req, ctx, slug, name)
+                _ -> wisp.method_not_allowed([http.Get, http.Delete])
               }
             }
             ["api", "ssh-keys"] -> {

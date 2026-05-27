@@ -1,0 +1,65 @@
+import gleam/list
+import gleam/option
+import gleam/result
+import gleam/string
+
+pub type PathError {
+  InvalidPath
+}
+
+/// Normalize a repo-relative path: empty string is root; rejects `..` and absolute paths.
+pub fn normalize(path: String) -> Result(String, PathError) {
+  let trimmed = string.trim(path)
+  case trimmed {
+    "" -> Ok("")
+    _ -> {
+      let segments = string.split(trimmed, on: "/")
+      case list.any(segments, fn(s) { s == ".." || s == "" }) {
+        True -> Error(InvalidPath)
+        False ->
+          segments
+          |> list.filter(fn(s) { s != "" })
+          |> string.join(with: "/")
+          |> Ok
+      }
+    }
+  }
+}
+
+pub fn join_path(base: String, name: String) -> Result(String, PathError) {
+  case base {
+    "" -> normalize(name)
+    _ ->
+      normalize(base <> "/" <> name)
+      |> result.map(fn(p) {
+        case p {
+          "" -> base
+          joined -> joined
+        }
+      })
+  }
+}
+
+pub fn tree_ref_path(ref: String, path: String) -> String {
+  case path {
+    "" -> ref
+    _ -> ref <> ":" <> path
+  }
+}
+
+pub fn parent_path(path: String) -> option.Option(String) {
+  case string.split(path, on: "/") {
+    [] -> option.None
+    [_] -> option.Some("")
+    segments -> {
+      let len = list.length(segments)
+      case len {
+        0 -> option.None
+        _ -> {
+          let parts = list.take(segments, len - 1)
+          option.Some(string.join(parts, with: "/"))
+        }
+      }
+    }
+  }
+}

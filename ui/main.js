@@ -1,5 +1,8 @@
 import { Clerk } from "@clerk/clerk-js";
+import { marked } from "marked";
 import { main } from "./src/ui.gleam";
+
+globalThis.marked = marked;
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -97,8 +100,9 @@ async function init() {
       return;
     }
     app.innerHTML = `<div id="gleam-root"></div>`;
+    const pathname = window.location.pathname || "/";
     main(
-      window.location.pathname || "/",
+      pathname,
       "#gleam-root",
       userJsonForGleam(user, token),
       window.location.origin,
