@@ -126,6 +126,23 @@ pub fn create_org(
   name: String,
   owner_id: String,
 ) -> Result(OrgRow, pog.QueryError) {
+  case
+    pog.transaction(db, fn(db) {
+      create_org_queries(db, slug, name, owner_id)
+    })
+  {
+    Ok(org) -> Ok(org)
+    Error(pog.TransactionRolledBack(e)) -> Error(e)
+    Error(pog.TransactionQueryError(e)) -> Error(e)
+  }
+}
+
+fn create_org_queries(
+  db: pog.Connection,
+  slug: String,
+  name: String,
+  owner_id: String,
+) -> Result(OrgRow, pog.QueryError) {
   case sql.orgs_insert(db, slug, name) {
     Ok(returned) ->
       case returned.rows {

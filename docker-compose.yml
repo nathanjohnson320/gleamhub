@@ -15,24 +15,24 @@ services:
       timeout: 5s
       retries: 10
 
-  server:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-secret-change-me-in-production}
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/gleamhub?sslmode=disable
-      CLERK_JWKS: ${CLERK_JWKS}
-      GIT_REPOS_ROOT: /data/repos
-      GLEAMHUB_GIT_HOST: ${GLEAMHUB_GIT_HOST:-localhost}
-      PORT: "9999"
-    volumes:
-      - ./server/data/repos:/data/repos
-    ports:
-      - "9999:9999"
+  # server:
+  #   build:
+  #     context: .
+  #     dockerfile: server/Dockerfile
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   environment:
+  #     SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-secret-change-me-in-production}
+  #     DATABASE_URL: postgres://postgres:postgres@postgres:5432/gleamhub?sslmode=disable
+  #     CLERK_JWKS: ${CLERK_JWKS}
+  #     GIT_REPOS_ROOT: /data/repos
+  #     GLEAMHUB_GIT_HOST: ${GLEAMHUB_GIT_HOST:-localhost}
+  #     PORT: "9999"
+  #   volumes:
+  #     - ./server/data/repos:/data/repos
+  #   ports:
+  #     - "9999:9999"
 
   git-ssh:
     build:

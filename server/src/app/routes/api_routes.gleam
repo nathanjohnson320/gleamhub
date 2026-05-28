@@ -100,7 +100,7 @@ pub fn create_org(req: Request, ctx: Context) -> Response {
                   json_api.org_json(org)
                   |> json.to_string
                   |> wisp.json_response(201)
-                Error(_) -> wisp.unprocessable_content()
+                Error(e) -> create_org_error_response(e)
               }
             }
             False -> wisp.bad_request("Invalid slug")
@@ -109,6 +109,34 @@ pub fn create_org(req: Request, ctx: Context) -> Response {
         Error(_) -> wisp.bad_request("Invalid JSON")
       }
     }
+  }
+}
+
+fn create_org_error_response(error: pog.QueryError) -> Response {
+  case is_duplicate_slug_error(error) {
+    True ->
+      json.object([
+        #(
+          "error",
+          json.string(
+            "Organization slug already exists. If a previous attempt failed, try another slug or delete the orphan row in the database.",
+          ),
+        ),
+      ])
+      |> json.to_string
+      |> wisp.json_response(409)
+    False -> wisp.unprocessable_content()
+  }
+}
+
+fn is_duplicate_slug_error(error: pog.QueryError) -> Bool {
+  case error {
+    pog.ConstraintViolated(_, constraint, _) ->
+      string.contains(constraint, "slug")
+    pog.PostgresqlError("23505", _, message) ->
+      string.contains(message, "organizations_slug")
+      || string.contains(message, "(slug)")
+    _ -> False
   }
 }
 

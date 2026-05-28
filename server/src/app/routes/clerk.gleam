@@ -1,3 +1,4 @@
+import app/database
 import app/web
 import gleam/dynamic/decode
 import gleam/http/request
@@ -22,9 +23,21 @@ pub fn middleware(
         ywt.decode(token, using: decoder(), claims: [], keys: [ctx.clerk_key])
       case decoded {
         Ok(user_id) -> {
-          let ctx =
-            web.Context(..ctx, user_id: option.Some(user_id))
-          handle_request(ctx)
+          case
+            database.upsert_session_user(
+              ctx.repo(),
+              user_id,
+              option.None,
+              option.None,
+            )
+          {
+            Ok(_) -> {
+              let ctx =
+                web.Context(..ctx, user_id: option.Some(user_id))
+              handle_request(ctx)
+            }
+            Error(_) -> wisp.internal_server_error()
+          }
         }
         Error(_) -> wisp.response(401)
       }
