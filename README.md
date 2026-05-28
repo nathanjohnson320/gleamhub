@@ -18,8 +18,11 @@ cp .env.example .env
 cp server/.env.example server/.env
 cp ui/.env.example ui/.env
 
-# 2. Start Postgres, API, git-ssh, and built UI
-docker compose up --build
+# 2. Postgres + git-ssh (API runs on the host — see step 3)
+docker compose up --build -d
+
+# 3. Migrations + API
+cd server && npm install && npm run db:up && gleam run
 ```
 
 In a **second terminal** (hot-reload UI — recommended for frontend work):
@@ -30,7 +33,7 @@ cd ui && npm install && npm run dev
 
 | What | URL |
 |------|-----|
-| App (production build from Docker) | http://localhost:9999 |
+| API (`gleam run` in `server/`) | http://localhost:9999 |
 | App (Vite dev — use this while hacking UI) | http://localhost:5173 |
 | Git SSH | `ssh://git@localhost:2222/{org}/{repo}.git` |
 
@@ -56,7 +59,7 @@ Use **one** Clerk application for both server and UI.
 
    The server expects a **single RSA JWK object** (not the full JWKS array). You can take the first key from your Clerk JWKS URL (`https://<your-clerk-domain>/.well-known/jwks.json`) or match the format in `server/.env.example`.
 
-3. Restart: `docker compose up --build` (and `npm run dev` in `ui/` if it was already running).
+3. Restart: `docker compose up --build -d`, then `gleam run` in `server/` (and `npm run dev` in `ui/` if it was already running).
 
 If the UI shows **Unauthorized**, `CLERK_JWKS` and `VITE_CLERK_PUBLISHABLE_KEY` are from different Clerk apps or the JWK is malformed.
 
@@ -80,7 +83,7 @@ First push to an empty repo on port 2222:
 ssh-keygen -R '[localhost]:2222'   # if host key changed after container rebuild
 ```
 
-Repos on disk: `server/data/repos/{org}/{repo}.git`
+On-disk repo layout: see [Architecture](#architecture).
 
 ---
 
@@ -109,7 +112,7 @@ Repository **owners** can protect branch names on the repo home page (no branche
 
 ## Local development (Gleam + Vite)
 
-For server/UI code changes without rebuilding the server image every time:
+Use this when changing server or UI code without rebuilding Docker images. If you already completed [5-minute setup](#5-minute-setup), skip the `cp` steps and reuse your env files.
 
 ```bash
 # Terminal 1 — database
@@ -117,21 +120,18 @@ docker compose up postgres -d
 
 # Terminal 2 — API
 cd server
-cp .env.example .env    # CLERK_JWKS + DATABASE_URL
+cp .env.example .env    # skip if already copied — CLERK_JWKS + DATABASE_URL
 npm install
 npm run db:up
-gleam run               # http://localhost:9999
+gleam run
 
-# Terminal 3 — UI
-cd ui
-cp .env.example .env
-npm install
-npm run dev             # http://localhost:5173
-
-# Terminal 4 — git SSH (still Docker)
+# Terminal 3 — git SSH (still Docker)
 docker compose up git-ssh -d
 ```
 
+In another terminal, run the UI dev server — same as [5-minute setup](#5-minute-setup): `cd ui && npm install && npm run dev`.
+
+- API and Vite URLs: see the table in [5-minute setup](#5-minute-setup).
 - Vite proxies `/api` to port 9999.
 - `git-ssh` uses `GLEAMHUB_API_URL=http://host.docker.internal:9999` by default (Mac/Windows). On Linux, set `GLEAMHUB_API_URL=http://172.17.0.1:9999` in `.env` if needed.
 
