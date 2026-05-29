@@ -15,9 +15,8 @@ pub fn ssh_authorized_keys_test() {
 
     let hit =
       route_test_support.dispatch(
-        route_test_support.get(
+        route_test_support.internal_get(
           "/internal/ssh/authorized_keys?k=" <> blob,
-          option.None,
         ),
         ctx,
       )
@@ -26,14 +25,30 @@ pub fn ssh_authorized_keys_test() {
 
     let miss =
       route_test_support.dispatch(
-        route_test_support.get(
+        route_test_support.internal_get(
           "/internal/ssh/authorized_keys?k=missing",
-          option.None,
         ),
         ctx,
       )
     let assert 200 = route_test_support.status(miss)
     let assert "" = route_test_support.body(miss)
+
+    route_test_support.cleanup_repos_root(root)
+    Nil
+  })
+}
+
+pub fn ssh_internal_auth_rejects_missing_token_test() {
+  db_test_support.with_db(fn(db) {
+    let root = route_test_support.repos_root()
+    let #(ctx, _sign) = route_test_support.authenticated(db, root)
+
+    let res =
+      route_test_support.dispatch(
+        route_test_support.get("/internal/ssh/access?org=acme&repo=demo", option.None),
+        ctx,
+      )
+    let assert 401 = route_test_support.status(res)
 
     route_test_support.cleanup_repos_root(root)
     Nil
@@ -52,9 +67,8 @@ pub fn ssh_access_check_test() {
 
     let allowed =
       route_test_support.dispatch(
-        route_test_support.get(
+        route_test_support.internal_get(
           "/internal/ssh/access?org=acme&repo=demo&user_id=owner&op=git-upload-pack",
-          option.None,
         ),
         ctx,
       )
@@ -63,9 +77,8 @@ pub fn ssh_access_check_test() {
 
     let denied =
       route_test_support.dispatch(
-        route_test_support.get(
+        route_test_support.internal_get(
           "/internal/ssh/access?org=acme&repo=demo&user_id=outsider&op=git-upload-pack",
-          option.None,
         ),
         ctx,
       )
@@ -89,9 +102,8 @@ pub fn ssh_ref_update_unprotected_allows_test() {
 
     let res =
       route_test_support.dispatch(
-        route_test_support.get(
+        route_test_support.internal_get(
           "/internal/ssh/ref-update?org=acme&repo=demo&user_id=owner&oldrev=0000000000000000000000000000000000000000&newrev=abc123def4567890123456789012345678901234&ref=refs/heads/feature",
-          option.None,
         ),
         ctx,
       )
@@ -119,13 +131,12 @@ pub fn ssh_ref_update_protected_denies_test() {
 
     let res =
       route_test_support.dispatch(
-        route_test_support.get(
+        route_test_support.internal_get(
           "/internal/ssh/ref-update?org=acme&repo=demo&user_id=owner&oldrev="
           <> main_sha
           <> "&newrev="
           <> feature_sha
           <> "&ref=refs/heads/main",
-          option.None,
         ),
         ctx,
       )

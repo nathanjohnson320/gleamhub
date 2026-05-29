@@ -28,6 +28,13 @@ pub fn main() {
   let assert Ok(clerk_jwks) = env.get_string("CLERK_JWKS")
   let assert Ok(clerk_key) = json.parse(clerk_jwks, verify_key.decoder())
 
+  let assert Ok(internal_api_token) = env.get_string("INTERNAL_API_TOKEN")
+
+  let clerk_issuer = case env.get_string("CLERK_ISSUER") {
+    Ok(issuer) -> option.Some(issuer)
+    Error(_) -> option.None
+  }
+
   let git_repos_root = case env.get_string("GIT_REPOS_ROOT") {
     Ok(root) -> root
     Error(_) -> "./data/repos"
@@ -60,6 +67,8 @@ pub fn main() {
       git_host: git_host,
       user_id: option.None,
       clerk: clerk_api.client_from_env(),
+      internal_api_token: internal_api_token,
+      clerk_issuer: clerk_issuer,
     )
 
   let handler = router.handle_request(_, ctx)

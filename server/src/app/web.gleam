@@ -33,6 +33,8 @@ pub type Context {
     git_host: String,
     user_id: option.Option(String),
     clerk: option.Option(Client),
+    internal_api_token: String,
+    clerk_issuer: option.Option(String),
   )
 }
 

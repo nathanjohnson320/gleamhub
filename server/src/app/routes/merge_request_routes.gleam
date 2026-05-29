@@ -36,7 +36,7 @@ fn hydrate_comments(
   }
 }
 
-fn git_dir(ctx: Context, repo: database.RepoRow) -> String {
+fn git_dir(ctx: Context, repo: database.RepoRow) -> Result(String, git_exec.GitError) {
   git_exec.repo_path(org_access.git_repos_root(ctx), repo.disk_path)
 }
 
@@ -51,7 +51,11 @@ fn with_repo(
     Ok(_) ->
       case database.get_repo(ctx.repo(), org_slug, repo_name) {
         Ok(option.None) -> wisp.not_found()
-        Ok(option.Some(repo)) -> run(repo, git_dir(ctx, repo))
+        Ok(option.Some(repo)) ->
+          case git_dir(ctx, repo) {
+            Error(_) -> wisp.internal_server_error()
+            Ok(git_dir) -> run(repo, git_dir)
+          }
         Error(_) -> wisp.internal_server_error()
       }
   }

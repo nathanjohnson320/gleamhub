@@ -103,8 +103,15 @@ fn run_git_ffi(git_dir: String, args: List(String)) -> #(Int, String, String)
 
 const zero_sha = "0000000000000000000000000000000000000000"
 
-pub fn repo_path(root: String, disk_path: String) -> String {
-  root <> "/" <> disk_path
+pub fn zero_sha_value() -> String {
+  zero_sha
+}
+
+pub fn repo_path(root: String, disk_path: String) -> Result(String, GitError) {
+  case git_path.validate_disk_path(disk_path) {
+    Error(_) -> Error(InvalidPath)
+    Ok(safe) -> Ok(root <> "/" <> safe)
+  }
 }
 
 fn hooks_directory() -> String {
@@ -118,25 +125,32 @@ fn hooks_directory() -> String {
 }
 
 pub fn install_repo_hooks(root: String, disk_path: String) -> Result(Nil, String) {
-  let git_dir = repo_path(root, disk_path)
-  let src = hooks_directory() <> "/pre-receive"
-  let dest = git_dir <> "/hooks/pre-receive"
-  case install_pre_receive_hook_ffi(src, dest) {
-    "ok" -> Ok(Nil)
-    _ -> Error("failed to install pre-receive hook")
+  case repo_path(root, disk_path) {
+    Error(_) -> Error("invalid repository path")
+    Ok(git_dir) -> {
+      let src = hooks_directory() <> "/pre-receive"
+      let dest = git_dir <> "/hooks/pre-receive"
+      case install_pre_receive_hook_ffi(src, dest) {
+        "ok" -> Ok(Nil)
+        _ -> Error("failed to install pre-receive hook")
+      }
+    }
   }
 }
 
 pub fn init_bare_repo(root: String, disk_path: String) -> Result(Nil, String) {
-  let path = repo_path(root, disk_path)
-  case simplifile.create_directory_all(path) {
-    Error(e) -> Error("mkdir failed: " <> simplifile.describe_error(e))
-    Ok(_) -> {
-      case init_bare_ffi(path) {
-        "ok" -> install_repo_hooks(root, disk_path)
-        _ -> Error("git init failed")
+  case repo_path(root, disk_path) {
+    Error(_) -> Error("invalid repository path")
+    Ok(path) ->
+      case simplifile.create_directory_all(path) {
+        Error(e) -> Error("mkdir failed: " <> simplifile.describe_error(e))
+        Ok(_) -> {
+          case init_bare_ffi(path) {
+            "ok" -> install_repo_hooks(root, disk_path)
+            _ -> Error("git init failed")
+          }
+        }
       }
-    }
   }
 }
 
@@ -158,8 +172,12 @@ pub fn is_zero_sha(sha: String) -> Bool {
 }
 
 pub fn remove_bare_repo(root: String, disk_path: String) -> Result(Nil, String) {
-  simplifile.delete(repo_path(root, disk_path))
-  |> result.map_error(fn(e) { "remove repo failed: " <> simplifile.describe_error(e) })
+  case repo_path(root, disk_path) {
+    Error(_) -> Error("invalid repository path")
+    Ok(path) ->
+      simplifile.delete(path)
+      |> result.map_error(fn(e) { "remove repo failed: " <> simplifile.describe_error(e) })
+  }
 }
 
 fn run_git(git_dir: String, args: List(String)) -> Result(String, GitError) {

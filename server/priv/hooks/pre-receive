@@ -2,6 +2,7 @@
 set -eu
 
 API_URL="${GLEAMHUB_API_URL:-http://host.docker.internal:9999}"
+INTERNAL_TOKEN="${INTERNAL_API_TOKEN:?missing INTERNAL_API_TOKEN}"
 USER_ID="${GLEAMHUB_USER_ID:?missing GLEAMHUB_USER_ID}"
 ORG="${GLEAMHUB_ORG:?missing GLEAMHUB_ORG}"
 REPO="${GLEAMHUB_REPO:?missing GLEAMHUB_REPO}"
@@ -15,6 +16,7 @@ while read -r oldrev newrev refname; do
   esac
 
   status=$(curl -sf -o /tmp/gleamhub-ref-update.json -w '%{http_code}' --get \
+    -H "X-Gleamhub-Internal-Token: $INTERNAL_TOKEN" \
     "$API_URL/internal/ssh/ref-update" \
     --data-urlencode "org=$ORG" \
     --data-urlencode "repo=$REPO" \

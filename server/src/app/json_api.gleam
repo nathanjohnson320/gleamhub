@@ -33,7 +33,6 @@ pub fn repo_json(repo: RepoRow, clone_url: String) -> json.Json {
     #("id", json.string(repo.id)),
     #("name", json.string(repo.name)),
     #("org_slug", json.string(repo.org_slug)),
-    #("disk_path", json.string(repo.disk_path)),
     #("clone_url", json.string(clone_url)),
     #(
       "description",

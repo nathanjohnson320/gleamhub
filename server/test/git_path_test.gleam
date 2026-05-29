@@ -48,6 +48,26 @@ pub fn normalize_sha_invalid_test() {
   let assert Error(git_path.InvalidPath) = git_path.normalize_sha("")
 }
 
+pub fn normalize_ref_valid_test() {
+  let assert Ok("main") = git_path.normalize_ref("main")
+  let assert Ok("feature/foo") = git_path.normalize_ref("feature/foo")
+  let assert Ok("abc1234") = git_path.normalize_ref("abc1234")
+}
+
+pub fn normalize_ref_invalid_test() {
+  let assert Error(git_path.InvalidPath) = git_path.normalize_ref("")
+  let assert Error(git_path.InvalidPath) = git_path.normalize_ref("--help")
+  let assert Error(git_path.InvalidPath) = git_path.normalize_ref("/main")
+}
+
+pub fn validate_disk_path_test() {
+  let assert Ok("acme/demo.git") = git_path.validate_disk_path("acme/demo.git")
+  let assert Error(git_path.InvalidPath) =
+    git_path.validate_disk_path("../escape.git")
+  let assert Error(git_path.InvalidPath) =
+    git_path.validate_disk_path("/acme/demo.git")
+}
+
 pub fn normalize_branch_valid_test() {
   let assert Ok("main") = git_path.normalize_branch("main")
   let assert Ok("feature/foo") = git_path.normalize_branch("feature/foo")

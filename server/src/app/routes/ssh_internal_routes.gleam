@@ -69,9 +69,23 @@ pub fn ref_update_check(req: Request, ctx: Context) -> Response {
         Ok(option.None) -> deny("repository not found")
         Error(_) -> wisp.internal_server_error()
         Ok(option.Some(repo_row)) -> {
-          let git_dir =
-            git_exec.repo_path(org_access.git_repos_root(ctx), repo_row.disk_path)
-          evaluate_ref_update(ctx, org, repo, git_dir, oldrev, newrev, ref)
+          case git_exec.repo_path(org_access.git_repos_root(ctx), repo_row.disk_path) {
+            Error(_) -> deny("repository not found")
+            Ok(git_dir) ->
+              case normalize_rev(oldrev), normalize_rev(newrev) {
+                Ok(valid_oldrev), Ok(valid_newrev) ->
+                  evaluate_ref_update(
+                    ctx,
+                    org,
+                    repo,
+                    git_dir,
+                    valid_oldrev,
+                    valid_newrev,
+                    ref,
+                  )
+                _, _ -> deny("invalid revision")
+              }
+          }
         }
       }
   }
@@ -143,5 +157,16 @@ fn query_param(req: Request, name: String) -> String {
   }) {
     Ok(#(_, value)) -> value
     Error(_) -> ""
+  }
+}
+
+fn normalize_rev(rev: String) -> Result(String, Nil) {
+  case git_exec.is_zero_sha(rev) {
+    True -> Ok(git_exec.zero_sha_value())
+    False ->
+      case git_path.normalize_sha(rev) {
+        Ok(sha) -> Ok(sha)
+        Error(_) -> Error(Nil)
+      }
   }
 }

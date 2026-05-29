@@ -131,8 +131,10 @@ pub fn squash_merge_fixture_test() {
 }
 
 pub fn repo_path_test() {
-  let assert "/data/repos/acme/demo.git" =
+  let assert Ok("/data/repos/acme/demo.git") =
     git_exec.repo_path("/data/repos", "acme/demo.git")
+  let assert Error(git_exec.InvalidPath) =
+    git_exec.repo_path("/data/repos", "../escape.git")
 }
 
 pub fn is_zero_sha_test() {
@@ -181,7 +183,7 @@ pub fn init_bare_repo_test() {
   let root = "/tmp/gleamhub_bare_" <> id
   let disk = "test-org/test-repo.git"
   let assert Ok(Nil) = git_exec.init_bare_repo(root, disk)
-  let git_dir = git_exec.repo_path(root, disk)
+  let assert Ok(git_dir) = git_exec.repo_path(root, disk)
   let assert Ok(branches) = git_exec.list_branches(git_dir)
   let assert [] = branches
   let _ = git_exec.remove_bare_repo(root, disk)
@@ -193,7 +195,7 @@ pub fn install_repo_hooks_test() {
   let root = "/tmp/gleamhub_hooks_" <> id
   let disk = "test-org/hooked.git"
   let assert Ok(Nil) = git_exec.init_bare_repo(root, disk)
-  let git_dir = git_exec.repo_path(root, disk)
+  let assert Ok(git_dir) = git_exec.repo_path(root, disk)
   let assert Ok(Nil) = git_exec.install_repo_hooks(root, disk)
   let hook_path = git_dir <> "/hooks/pre-receive"
   let assert Ok(True) = simplifile.is_file(hook_path)

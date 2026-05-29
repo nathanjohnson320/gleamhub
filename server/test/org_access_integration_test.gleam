@@ -20,6 +20,8 @@ fn test_context(repo: fn() -> pog.Connection) -> web.Context {
     git_host: "git.example.com",
     user_id: option.None,
     clerk: option.None,
+    internal_api_token: "test-internal-token",
+    clerk_issuer: option.None,
   )
 }
 

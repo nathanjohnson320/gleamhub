@@ -5,16 +5,20 @@ import gleam/http
 import gleam/json
 import gleam/option
 import gleam/string
+import gleam/time/duration
 import pog
 import wisp
 import wisp/simulate
 import ywt
 import ywt/algorithm
+import ywt/claim
 import ywt/sign_key.{type SignKey}
 import ywt/verify_key.{type VerifyKey}
 import youid/uuid
 
 const static_directory = "priv/static"
+
+const internal_api_token = "test-internal-token"
 
 pub fn repos_root() -> String {
   "/tmp/gleamhub_route_" <> uuid.to_string(uuid.v7())
@@ -34,6 +38,8 @@ fn context(
     git_host: "git.test.local",
     user_id: option.None,
     clerk:,
+    internal_api_token:,
+    clerk_issuer: option.None,
   )
 }
 
@@ -59,9 +65,16 @@ pub fn authenticated_with_clerk(
 pub fn bearer_token(sign: SignKey, user_id: String) -> String {
   ywt.encode(
     payload: [#("sub", json.string(user_id))],
-    claims: [],
+    claims: [
+      claim.expires_at(max_age: duration.hours(1), leeway: duration.minutes(5)),
+    ],
     key: sign,
   )
+}
+
+pub fn internal_get(path: String) -> wisp.Request {
+  simulate.request(http.Get, path)
+  |> simulate.header("x-gleamhub-internal-token", internal_api_token)
 }
 
 pub fn get(path: String, token: option.Option(String)) -> wisp.Request {

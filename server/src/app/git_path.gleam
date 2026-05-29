@@ -65,6 +65,42 @@ fn is_hex(s: String) -> Bool {
   })
 }
 
+/// Git ref for browse operations: branch name or commit SHA.
+pub fn normalize_ref(ref: String) -> Result(String, PathError) {
+  let trimmed = string.trim(ref)
+  case trimmed {
+    "" -> Error(InvalidPath)
+    _ ->
+      case string.starts_with(trimmed, "-") {
+        True -> Error(InvalidPath)
+        False ->
+          case normalize_sha(trimmed) {
+            Ok(sha) -> Ok(sha)
+            Error(_) -> normalize_branch(trimmed)
+          }
+      }
+  }
+}
+
+/// Validates a repository disk path stored in the database.
+pub fn validate_disk_path(path: String) -> Result(String, PathError) {
+  let trimmed = string.trim(path)
+  case trimmed {
+    "" -> Error(InvalidPath)
+    _ ->
+      case string.starts_with(trimmed, "/") || string.contains(trimmed, "..") {
+        True -> Error(InvalidPath)
+        False -> {
+          let segments = string.split(trimmed, on: "/")
+          case list.any(segments, fn(s) { s == "" }) {
+            True -> Error(InvalidPath)
+            False -> Ok(trimmed)
+          }
+        }
+      }
+  }
+}
+
 /// Branch names must be a single ref segment (no `/..` or absolute paths).
 pub fn normalize_branch(name: String) -> Result(String, PathError) {
   let trimmed = string.trim(name)

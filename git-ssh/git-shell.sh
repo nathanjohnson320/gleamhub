@@ -8,6 +8,7 @@ fi
 
 USER_ID="${GLEAMHUB_USER_ID:?missing GLEAMHUB_USER_ID}"
 API_URL="${GLEAMHUB_API_URL:-http://host.docker.internal:9999}"
+INTERNAL_TOKEN="${INTERNAL_API_TOKEN:?missing INTERNAL_API_TOKEN}"
 ROOT="${GIT_REPOS_ROOT:-/data/repos}"
 
 cmd="${SSH_ORIGINAL_COMMAND:-}"
@@ -38,6 +39,7 @@ op=$(printf '%s' "$cmd" | sed 's/ .*//')
 op=${op#git-}
 
 status=$(curl -sf -o /dev/null -w '%{http_code}' --get \
+  -H "X-Gleamhub-Internal-Token: $INTERNAL_TOKEN" \
   "$API_URL/internal/ssh/access" \
   --data-urlencode "org=$org" \
   --data-urlencode "repo=$repo" \

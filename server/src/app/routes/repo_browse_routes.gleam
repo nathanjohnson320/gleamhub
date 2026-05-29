@@ -47,7 +47,7 @@ fn join_path_segments(segments: List(String)) -> String {
   string.join(segments, with: "/")
 }
 
-fn git_dir(ctx: Context, repo: RepoRow) -> String {
+fn git_dir(ctx: Context, repo: RepoRow) -> Result(String, git_exec.GitError) {
   git_exec.repo_path(org_access.git_repos_root(ctx), repo.disk_path)
 }
 
@@ -62,7 +62,11 @@ fn with_repo(
     Ok(_) ->
       case get_repo(ctx.repo(), org_slug, repo_name) {
         Ok(option.None) -> wisp.not_found()
-        Ok(option.Some(repo)) -> run(git_dir(ctx, repo), repo)
+        Ok(option.Some(repo)) ->
+          case git_dir(ctx, repo) {
+            Error(_) -> wisp.internal_server_error()
+            Ok(dir) -> run(dir, repo)
+          }
         Error(_) -> wisp.internal_server_error()
       }
   }
@@ -71,7 +75,11 @@ fn with_repo(
 fn resolve_ref(git_dir: String, ref_param: String) -> Result(String, git_exec.GitError) {
   case ref_param {
     "" -> git_exec.default_branch(git_dir)
-    ref -> Ok(ref)
+    ref ->
+      case git_path.normalize_ref(ref) {
+        Error(_) -> Error(git_exec.InvalidPath)
+        Ok(validated) -> Ok(validated)
+      }
   }
 }
 

@@ -36,11 +36,13 @@ fn with_repo(
     Ok(_) ->
       case database.get_repo(ctx.repo(), org_slug, repo_name) {
         Ok(option.None) -> wisp.not_found()
-        Ok(option.Some(repo)) -> {
-          let git_dir =
+        Ok(option.Some(repo)) ->
+          case
             git_exec.repo_path(org_access.git_repos_root(ctx), repo.disk_path)
-          run(repo, git_dir)
-        }
+          {
+            Error(_) -> wisp.internal_server_error()
+            Ok(git_dir) -> run(repo, git_dir)
+          }
         Error(_) -> wisp.internal_server_error()
       }
   }

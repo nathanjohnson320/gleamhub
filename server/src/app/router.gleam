@@ -1,5 +1,6 @@
 import app/routes/api_routes
 import app/routes/clerk
+import app/routes/internal_auth
 import app/routes/merge_request_routes
 import app/routes/repo_browse_routes
 import app/routes/repo_settings_routes
@@ -32,12 +33,19 @@ pub fn handle_request(req: Request, ctx: Context) -> Response {
 
   case path_segments {
     ["internal", "ssh", "authorized_keys"] ->
-      ssh_internal_routes.authorized_keys(req, ctx)
+      internal_auth.with_token(req, ctx, fn() {
+        ssh_internal_routes.authorized_keys(req, ctx)
+      })
 
-    ["internal", "ssh", "access"] -> ssh_internal_routes.access_check(req, ctx)
+    ["internal", "ssh", "access"] ->
+      internal_auth.with_token(req, ctx, fn() {
+        ssh_internal_routes.access_check(req, ctx)
+      })
 
     ["internal", "ssh", "ref-update"] ->
-      ssh_internal_routes.ref_update_check(req, ctx)
+      internal_auth.with_token(req, ctx, fn() {
+        ssh_internal_routes.ref_update_check(req, ctx)
+      })
 
     _ -> {
       case is_ui_route(path_segments) {
