@@ -9,6 +9,483 @@ import gleam/option.{type Option}
 import pog
 import youid/uuid.{type Uuid}
 
+/// A row you get from running the `issue_close` query
+/// defined in `./src/app/sql/issue_close.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type IssueCloseRow {
+  IssueCloseRow(
+    id: String,
+    number: Int,
+    title: String,
+    description: Option(String),
+    author_user_id: String,
+    state: String,
+    closed_at: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+/// Runs the `issue_close` query
+/// defined in `./src/app/sql/issue_close.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn issue_close(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+  arg_3: Int,
+) -> Result(pog.Returned(IssueCloseRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use number <- decode.field(1, decode.int)
+    use title <- decode.field(2, decode.string)
+    use description <- decode.field(3, decode.optional(decode.string))
+    use author_user_id <- decode.field(4, decode.string)
+    use state <- decode.field(5, decode.string)
+    use closed_at <- decode.field(6, decode.string)
+    use created_at <- decode.field(7, decode.string)
+    use updated_at <- decode.field(8, decode.string)
+    decode.success(IssueCloseRow(
+      id:,
+      number:,
+      title:,
+      description:,
+      author_user_id:,
+      state:,
+      closed_at:,
+      created_at:,
+      updated_at:,
+    ))
+  }
+
+  "UPDATE issues i
+SET state = 'closed', closed_at = now(), updated_at = now()
+FROM repositories r
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE i.repository_id = r.id
+  AND o.slug = $1
+  AND r.name = $2
+  AND i.number = $3
+  AND i.state = 'open'
+RETURNING
+  i.id::text,
+  i.number,
+  i.title,
+  i.description,
+  i.author_user_id,
+  i.state,
+  COALESCE(i.closed_at::text, '') AS closed_at,
+  i.created_at::text,
+  i.updated_at::text;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.parameter(pog.int(arg_3))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `issue_comments_insert` query
+/// defined in `./src/app/sql/issue_comments_insert.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type IssueCommentsInsertRow {
+  IssueCommentsInsertRow(
+    id: String,
+    author_user_id: String,
+    body: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+/// Runs the `issue_comments_insert` query
+/// defined in `./src/app/sql/issue_comments_insert.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn issue_comments_insert(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+  arg_3: Int,
+  arg_4: String,
+  arg_5: String,
+) -> Result(pog.Returned(IssueCommentsInsertRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use author_user_id <- decode.field(1, decode.string)
+    use body <- decode.field(2, decode.string)
+    use created_at <- decode.field(3, decode.string)
+    use updated_at <- decode.field(4, decode.string)
+    decode.success(IssueCommentsInsertRow(
+      id:,
+      author_user_id:,
+      body:,
+      created_at:,
+      updated_at:,
+    ))
+  }
+
+  "INSERT INTO issue_comments (
+  issue_id,
+  author_user_id,
+  body
+)
+SELECT i.id, $4, $5
+FROM issues i
+INNER JOIN repositories r ON r.id = i.repository_id
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE o.slug = $1 AND r.name = $2 AND i.number = $3
+RETURNING
+  id::text,
+  author_user_id,
+  body,
+  created_at::text,
+  updated_at::text;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.parameter(pog.int(arg_3))
+  |> pog.parameter(pog.text(arg_4))
+  |> pog.parameter(pog.text(arg_5))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `issue_comments_list` query
+/// defined in `./src/app/sql/issue_comments_list.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type IssueCommentsListRow {
+  IssueCommentsListRow(
+    id: String,
+    author_user_id: String,
+    author_name: String,
+    body: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+/// Runs the `issue_comments_list` query
+/// defined in `./src/app/sql/issue_comments_list.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn issue_comments_list(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+  arg_3: Int,
+) -> Result(pog.Returned(IssueCommentsListRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use author_user_id <- decode.field(1, decode.string)
+    use author_name <- decode.field(2, decode.string)
+    use body <- decode.field(3, decode.string)
+    use created_at <- decode.field(4, decode.string)
+    use updated_at <- decode.field(5, decode.string)
+    decode.success(IssueCommentsListRow(
+      id:,
+      author_user_id:,
+      author_name:,
+      body:,
+      created_at:,
+      updated_at:,
+    ))
+  }
+
+  "SELECT
+  c.id::text,
+  c.author_user_id,
+  c.author_user_id AS author_name,
+  c.body,
+  c.created_at::text,
+  c.updated_at::text
+FROM issue_comments c
+INNER JOIN issues i ON i.id = c.issue_id
+INNER JOIN repositories r ON r.id = i.repository_id
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE o.slug = $1 AND r.name = $2 AND i.number = $3
+ORDER BY c.created_at ASC;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.parameter(pog.int(arg_3))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `issue_get` query
+/// defined in `./src/app/sql/issue_get.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type IssueGetRow {
+  IssueGetRow(
+    id: String,
+    number: Int,
+    title: String,
+    description: Option(String),
+    author_user_id: String,
+    state: String,
+    closed_at: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+/// Runs the `issue_get` query
+/// defined in `./src/app/sql/issue_get.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn issue_get(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+  arg_3: Int,
+) -> Result(pog.Returned(IssueGetRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use number <- decode.field(1, decode.int)
+    use title <- decode.field(2, decode.string)
+    use description <- decode.field(3, decode.optional(decode.string))
+    use author_user_id <- decode.field(4, decode.string)
+    use state <- decode.field(5, decode.string)
+    use closed_at <- decode.field(6, decode.string)
+    use created_at <- decode.field(7, decode.string)
+    use updated_at <- decode.field(8, decode.string)
+    decode.success(IssueGetRow(
+      id:,
+      number:,
+      title:,
+      description:,
+      author_user_id:,
+      state:,
+      closed_at:,
+      created_at:,
+      updated_at:,
+    ))
+  }
+
+  "SELECT
+  i.id::text,
+  i.number,
+  i.title,
+  i.description,
+  i.author_user_id,
+  i.state,
+  COALESCE(i.closed_at::text, '') AS closed_at,
+  i.created_at::text,
+  i.updated_at::text
+FROM issues i
+INNER JOIN repositories r ON r.id = i.repository_id
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE o.slug = $1 AND r.name = $2 AND i.number = $3;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.parameter(pog.int(arg_3))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `issue_insert` query
+/// defined in `./src/app/sql/issue_insert.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type IssueInsertRow {
+  IssueInsertRow(
+    id: String,
+    number: Int,
+    title: String,
+    description: Option(String),
+    author_user_id: String,
+    state: String,
+    closed_at: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+/// Runs the `issue_insert` query
+/// defined in `./src/app/sql/issue_insert.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn issue_insert(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+  arg_3: String,
+  arg_4: String,
+  arg_5: String,
+) -> Result(pog.Returned(IssueInsertRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use number <- decode.field(1, decode.int)
+    use title <- decode.field(2, decode.string)
+    use description <- decode.field(3, decode.optional(decode.string))
+    use author_user_id <- decode.field(4, decode.string)
+    use state <- decode.field(5, decode.string)
+    use closed_at <- decode.field(6, decode.string)
+    use created_at <- decode.field(7, decode.string)
+    use updated_at <- decode.field(8, decode.string)
+    decode.success(IssueInsertRow(
+      id:,
+      number:,
+      title:,
+      description:,
+      author_user_id:,
+      state:,
+      closed_at:,
+      created_at:,
+      updated_at:,
+    ))
+  }
+
+  "INSERT INTO issues (
+  repository_id,
+  number,
+  title,
+  description,
+  author_user_id,
+  state
+)
+SELECT
+  r.id,
+  COALESCE(
+    (SELECT MAX(i.number) FROM issues i WHERE i.repository_id = r.id),
+    0
+  ) + 1,
+  $3,
+  NULLIF($4, ''),
+  $5,
+  'open'
+FROM repositories r
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE o.slug = $1 AND r.name = $2
+RETURNING
+  id::text,
+  number,
+  title,
+  description,
+  author_user_id,
+  state,
+  COALESCE(closed_at::text, '') AS closed_at,
+  created_at::text,
+  updated_at::text;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.parameter(pog.text(arg_3))
+  |> pog.parameter(pog.text(arg_4))
+  |> pog.parameter(pog.text(arg_5))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `issue_list` query
+/// defined in `./src/app/sql/issue_list.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type IssueListRow {
+  IssueListRow(
+    id: String,
+    number: Int,
+    title: String,
+    description: Option(String),
+    author_user_id: String,
+    state: String,
+    closed_at: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+/// Runs the `issue_list` query
+/// defined in `./src/app/sql/issue_list.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn issue_list(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+) -> Result(pog.Returned(IssueListRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use number <- decode.field(1, decode.int)
+    use title <- decode.field(2, decode.string)
+    use description <- decode.field(3, decode.optional(decode.string))
+    use author_user_id <- decode.field(4, decode.string)
+    use state <- decode.field(5, decode.string)
+    use closed_at <- decode.field(6, decode.string)
+    use created_at <- decode.field(7, decode.string)
+    use updated_at <- decode.field(8, decode.string)
+    decode.success(IssueListRow(
+      id:,
+      number:,
+      title:,
+      description:,
+      author_user_id:,
+      state:,
+      closed_at:,
+      created_at:,
+      updated_at:,
+    ))
+  }
+
+  "SELECT
+  i.id::text,
+  i.number,
+  i.title,
+  i.description,
+  i.author_user_id,
+  i.state,
+  COALESCE(i.closed_at::text, '') AS closed_at,
+  i.created_at::text,
+  i.updated_at::text
+FROM issues i
+INNER JOIN repositories r ON r.id = i.repository_id
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE o.slug = $1 AND r.name = $2
+ORDER BY i.number DESC;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
 /// A row you get from running the `keys_authorized_line` query
 /// defined in `./src/app/sql/keys_authorized_line.sql`.
 ///

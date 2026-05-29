@@ -2,7 +2,27 @@ export function format_commit_time(unixSecondsStr) {
   const seconds = parseInt(unixSecondsStr, 10);
   if (!Number.isFinite(seconds)) return unixSecondsStr;
 
-  const date = new Date(seconds * 1000);
+  return format_relative(new Date(seconds * 1000), unixSecondsStr);
+}
+
+export function format_timestamp(value) {
+  const date = parse_timestamp(value);
+  if (!date) return value;
+  return format_relative(date, value);
+}
+
+function parse_timestamp(value) {
+  const direct = new Date(value);
+  if (!Number.isNaN(direct.getTime())) return direct;
+
+  const normalized = value.replace(" ", "T");
+  const retry = new Date(normalized);
+  if (!Number.isNaN(retry.getTime())) return retry;
+
+  return null;
+}
+
+function format_relative(date, fallback) {
   const now = Date.now();
   const diffSec = Math.round((now - date.getTime()) / 1000);
 

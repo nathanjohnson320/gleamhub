@@ -14,14 +14,17 @@ import blob_lines
 import modem
 import pages/keys
 import pages/commits
+import pages/issue_detail
+import pages/issues
 import pages/merge_request_detail
 import pages/merge_requests
 import pages/org_repos
 import pages/orgs
 import pages/repo_view
 import routes.{
-  type Route, Blob, CommitsList, Keys, MrDetail, MrList, MrNew, NotFound, OrgRepos,
-  Orgs, RepoMissingOrg, RepoView, from_uri, keys_path,
+  type Route, Blob, CommitsList, IssueDetail, IssueList, IssueNew, Keys, MrDetail,
+  MrList, MrNew, NotFound, OrgRepos, Orgs, RepoMissingOrg, RepoView, from_uri,
+  keys_path,
 }
 
 pub fn main(
@@ -47,6 +50,8 @@ type Model {
     repo_view: option.Option(repo_view.Model),
     mr: option.Option(merge_requests.Model),
     mr_detail: option.Option(merge_request_detail.Model),
+    issues: option.Option(issues.Model),
+    issue_detail: option.Option(issue_detail.Model),
     commits: option.Option(commits.Model),
     keys: keys.Model,
     user_menu_open: Bool,
@@ -64,6 +69,8 @@ pub type Msg {
   RepoViewMsg(repo_view.Msg)
   MrMsg(merge_requests.Msg)
   MrDetailMsg(merge_request_detail.Msg)
+  IssueMsg(issues.Msg)
+  IssueDetailMsg(issue_detail.Msg)
   CommitsMsg(commits.Msg)
   KeysMsg(keys.Msg)
   ClerkSessionUpdated(String)
@@ -92,6 +99,8 @@ fn init(flags: Flags) -> #(Model, Effect(Msg)) {
       repo_view: repo_view_model(route),
       mr: mr_model(route),
       mr_detail: mr_detail_model(route),
+      issues: issue_model(route),
+      issue_detail: issue_detail_model(route),
       commits: commits_model(route),
       keys: keys.init(),
       user_menu_open: False,
@@ -165,6 +174,24 @@ fn mr_detail_model(route: Route) -> option.Option(merge_request_detail.Model) {
   }
 }
 
+fn issue_model(route: Route) -> option.Option(issues.Model) {
+  case route {
+    IssueList(org, repo) ->
+      option.Some(issues.init(org, repo, issues.List))
+    IssueNew(org, repo) ->
+      option.Some(issues.init(org, repo, issues.New))
+    _ -> option.None
+  }
+}
+
+fn issue_detail_model(route: Route) -> option.Option(issue_detail.Model) {
+  case route {
+    IssueDetail(org, repo, number) ->
+      option.Some(issue_detail.init(org, repo, number))
+    _ -> option.None
+  }
+}
+
 fn commits_model(route: Route) -> option.Option(commits.Model) {
   case route {
     CommitsList(org, repo, ref) -> option.Some(commits.init(org, repo, ref))
@@ -192,6 +219,17 @@ fn route_effect(config: config.Config, route: Route) -> Effect(Msg) {
           effect.map(merge_request_detail.on_load(config, m), MrDetailMsg)
         option.None -> effect.none()
       }
+    IssueList(_, _) | IssueNew(_, _) ->
+      case issue_model(route) {
+        option.Some(m) -> effect.map(issues.on_load(config, m), IssueMsg)
+        option.None -> effect.none()
+      }
+    IssueDetail(_, _, _) ->
+      case issue_detail_model(route) {
+        option.Some(m) ->
+          effect.map(issue_detail.on_load(config, m), IssueDetailMsg)
+        option.None -> effect.none()
+      }
     CommitsList(_, _, _) ->
       case commits_model(route) {
         option.Some(m) -> effect.map(commits.on_load(config, m), CommitsMsg)
@@ -213,6 +251,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           case route {
             RepoView(Blob, _, _, _, _) -> blob_lines.init_effect()
             MrDetail(_, _, _) -> effect.none()
+            IssueDetail(_, _, _) -> effect.none()
             _ -> effect.none()
           },
         )
@@ -224,6 +263,8 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
             repo_view: repo_view_model(route),
             mr: mr_model(route),
             mr_detail: mr_detail_model(route),
+            issues: issue_model(route),
+            issue_detail: issue_detail_model(route),
             commits: commits_model(route),
             user_menu_open: False,
           ),
@@ -275,6 +316,30 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           #(
             Model(..model, mr_detail: option.Some(mrd)),
             effect.map(eff, MrDetailMsg),
+          )
+        }
+        option.None -> #(model, effect.none())
+      }
+    }
+    IssueMsg(m) -> {
+      case model.issues {
+        option.Some(issues_model) -> {
+          let #(issues_model, eff) = issues.update(m, issues_model, model.config)
+          #(
+            Model(..model, issues: option.Some(issues_model)),
+            effect.map(eff, IssueMsg),
+          )
+        }
+        option.None -> #(model, effect.none())
+      }
+    }
+    IssueDetailMsg(m) -> {
+      case model.issue_detail {
+        option.Some(issue) -> {
+          let #(issue, eff) = issue_detail.update(m, issue, model.config)
+          #(
+            Model(..model, issue_detail: option.Some(issue)),
+            effect.map(eff, IssueDetailMsg),
           )
         }
         option.None -> #(model, effect.none())
@@ -460,6 +525,24 @@ fn view(model: Model) -> Element(Msg) {
         option.None ->
           div([attr.class(components.page)], [
             components.empty_state("Loading merge request…"),
+          ])
+      }
+    }
+    IssueList(_, _) | IssueNew(_, _) -> {
+      case model.issues {
+        option.Some(issues_model) -> issues.view(issues_model) |> map(IssueMsg)
+        option.None ->
+          div([attr.class(components.page)], [
+            components.empty_state("Loading issues…"),
+          ])
+      }
+    }
+    IssueDetail(_, _, _) -> {
+      case model.issue_detail {
+        option.Some(issue) -> issue_detail.view(issue) |> map(IssueDetailMsg)
+        option.None ->
+          div([attr.class(components.page)], [
+            components.empty_state("Loading issue…"),
           ])
       }
     }

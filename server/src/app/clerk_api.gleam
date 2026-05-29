@@ -1,5 +1,6 @@
 import app/database.{
-  type MergeRequestCommentRow, comment_with_author_name,
+  type IssueCommentRow, type MergeRequestCommentRow, issue_comment_with_author_name,
+  comment_with_author_name,
 }
 import dot_env/env
 import gleam/dict.{type Dict}
@@ -74,6 +75,28 @@ pub fn hydrate_comments(
           Error(_) -> comment.author_user_id
         }
         comment_with_author_name(comment, author_name)
+      })
+    Error(_) -> comments
+  }
+}
+
+pub fn hydrate_issue_comments(
+  client: Client,
+  comments: List(IssueCommentRow),
+) -> List(IssueCommentRow) {
+  let author_ids =
+    comments
+    |> list.map(fn(comment) { comment.author_user_id })
+    |> list.unique
+
+  case lookup_display_names(client, author_ids) {
+    Ok(names) ->
+      list.map(comments, fn(comment) {
+        let author_name = case dict.get(names, comment.author_user_id) {
+          Ok(name) -> name
+          Error(_) -> comment.author_user_id
+        }
+        issue_comment_with_author_name(comment, author_name)
       })
     Error(_) -> comments
   }

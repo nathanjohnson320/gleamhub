@@ -816,6 +816,14 @@ fn repo_header(model: Model, clone_url: String) -> Element(Msg) {
               [text(model.repo_name)],
             ),
           ]),
+          div([attr.class("flex shrink-0 flex-wrap gap-2")], [
+          a(
+            [
+              attr.href(routes.issue_list_path(model.org_slug, model.repo_name)),
+              attr.class(components.btn_secondary <> " shrink-0"),
+            ],
+            [text("Issues")],
+          ),
           a(
             [
               attr.href(routes.mr_list_path(model.org_slug, model.repo_name)),
@@ -823,6 +831,7 @@ fn repo_header(model: Model, clone_url: String) -> Element(Msg) {
             ],
             [text("Merge requests")],
           ),
+          ]),
         ],
       ),
       case clone_url {

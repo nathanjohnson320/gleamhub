@@ -1,6 +1,6 @@
 import app/database.{
-  type KeyRow, type MergeRequestCommentRow, type MergeRequestRow, type OrgRow,
-  type RepoRow, type UserRow,
+  type IssueCommentRow, type IssueRow, type KeyRow, type MergeRequestCommentRow,
+  type MergeRequestRow, type OrgRow, type RepoRow, type UserRow,
 }
 import app/git_exec.{
   type BlobContent, type CommitEntry, type DiffFile, type MergeCheck,
@@ -223,6 +223,43 @@ pub fn merge_request_comments_json(
 ) -> json.Json {
   json.object([
     #("comments", json.array(comments, of: merge_request_comment_json)),
+  ])
+}
+
+pub fn issue_json(issue: IssueRow) -> json.Json {
+  json.object([
+    #("id", json.string(issue.id)),
+    #("number", json.int(issue.number)),
+    #("title", json.string(issue.title)),
+    #("description", optional_string(issue.description)),
+    #("author_user_id", json.string(issue.author_user_id)),
+    #("state", json.string(issue.state)),
+    #("closed_at", optional_string(issue.closed_at)),
+    #("created_at", json.string(issue.created_at)),
+    #("updated_at", json.string(issue.updated_at)),
+  ])
+}
+
+pub fn issues_json(issues: List(IssueRow)) -> json.Json {
+  json.object([
+    #("issues", json.array(issues, of: issue_json)),
+  ])
+}
+
+pub fn issue_comment_json(comment: IssueCommentRow) -> json.Json {
+  json.object([
+    #("id", json.string(comment.id)),
+    #("author_user_id", json.string(comment.author_user_id)),
+    #("author_name", json.string(comment.author_name)),
+    #("body", json.string(comment.body)),
+    #("created_at", json.string(comment.created_at)),
+    #("updated_at", json.string(comment.updated_at)),
+  ])
+}
+
+pub fn issue_comments_json(comments: List(IssueCommentRow)) -> json.Json {
+  json.object([
+    #("comments", json.array(comments, of: issue_comment_json)),
   ])
 }
 

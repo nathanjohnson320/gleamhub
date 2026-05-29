@@ -60,6 +60,31 @@ pub type MergeRequestCommentRow {
   )
 }
 
+pub type IssueRow {
+  IssueRow(
+    id: String,
+    number: Int,
+    title: String,
+    description: Option(String),
+    author_user_id: String,
+    state: String,
+    closed_at: Option(String),
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+pub type IssueCommentRow {
+  IssueCommentRow(
+    id: String,
+    author_user_id: String,
+    author_name: String,
+    body: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
 pub fn display_name_from_email(email: Option(String)) -> Option(String) {
   case email {
     option.None -> option.None
@@ -100,6 +125,13 @@ pub fn comment_with_author_name(
   author_name: String,
 ) -> MergeRequestCommentRow {
   MergeRequestCommentRow(..comment, author_name:)
+}
+
+pub fn issue_comment_with_author_name(
+  comment: IssueCommentRow,
+  author_name: String,
+) -> IssueCommentRow {
+  IssueCommentRow(..comment, author_name:)
 }
 
 pub fn list_orgs_for_user(db: pog.Connection, user_id: String) -> Result(
@@ -492,6 +524,89 @@ pub fn insert_merge_request_comment(
   |> result.map(mr_comment_from_insert_row)
 }
 
+pub fn list_issues(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+) -> Result(List(IssueRow), pog.QueryError) {
+  sql.issue_list(db, org_slug, repo_name)
+  |> result_map_rows
+  |> result.map(list.map(_, issue_from_list_row))
+}
+
+pub fn get_issue(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  number: Int,
+) -> Result(Option(IssueRow), pog.QueryError) {
+  sql.issue_get(db, org_slug, repo_name, number)
+  |> result_map_optional_row
+  |> result.map(option.map(_, issue_from_get_row))
+}
+
+pub fn insert_issue(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  title: String,
+  description: Option(String),
+  author_user_id: String,
+) -> Result(IssueRow, pog.QueryError) {
+  sql.issue_insert(
+    db,
+    org_slug,
+    repo_name,
+    title,
+    nullable_text(description),
+    author_user_id,
+  )
+  |> result_map_first_row
+  |> result.map(issue_from_insert_row)
+}
+
+pub fn close_issue(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  number: Int,
+) -> Result(IssueRow, pog.QueryError) {
+  sql.issue_close(db, org_slug, repo_name, number)
+  |> result_map_first_row
+  |> result.map(issue_from_close_row)
+}
+
+pub fn list_issue_comments(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  number: Int,
+) -> Result(List(IssueCommentRow), pog.QueryError) {
+  sql.issue_comments_list(db, org_slug, repo_name, number)
+  |> result_map_rows
+  |> result.map(list.map(_, issue_comment_from_list_row))
+}
+
+pub fn insert_issue_comment(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  number: Int,
+  author_user_id: String,
+  body: String,
+) -> Result(IssueCommentRow, pog.QueryError) {
+  sql.issue_comments_insert(
+    db,
+    org_slug,
+    repo_name,
+    number,
+    author_user_id,
+    body,
+  )
+  |> result_map_first_row
+  |> result.map(issue_comment_from_insert_row)
+}
+
 fn mr_from_list_row(row: sql.MrListRow) -> MergeRequestRow {
   mr_row(
     row.id,
@@ -671,6 +786,126 @@ fn mr_comment_row(
     body:,
     file_path:,
     line:,
+    created_at:,
+    updated_at:,
+  )
+}
+
+fn issue_from_list_row(row: sql.IssueListRow) -> IssueRow {
+  issue_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.author_user_id,
+    row.state,
+    row.closed_at,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn issue_from_get_row(row: sql.IssueGetRow) -> IssueRow {
+  issue_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.author_user_id,
+    row.state,
+    row.closed_at,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn issue_from_insert_row(row: sql.IssueInsertRow) -> IssueRow {
+  issue_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.author_user_id,
+    row.state,
+    row.closed_at,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn issue_from_close_row(row: sql.IssueCloseRow) -> IssueRow {
+  issue_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.author_user_id,
+    row.state,
+    row.closed_at,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn issue_row(
+  id: String,
+  number: Int,
+  title: String,
+  description: Option(String),
+  author_user_id: String,
+  state: String,
+  closed_at: String,
+  created_at: String,
+  updated_at: String,
+) -> IssueRow {
+  IssueRow(
+    id:,
+    number:,
+    title:,
+    description:,
+    author_user_id:,
+    state:,
+    closed_at: optional_timestamp(closed_at),
+    created_at:,
+    updated_at:,
+  )
+}
+
+fn issue_comment_from_list_row(row: sql.IssueCommentsListRow) -> IssueCommentRow {
+  issue_comment_row(
+    row.id,
+    row.author_user_id,
+    row.author_name,
+    row.body,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn issue_comment_from_insert_row(row: sql.IssueCommentsInsertRow) -> IssueCommentRow {
+  issue_comment_row(
+    row.id,
+    row.author_user_id,
+    "",
+    row.body,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn issue_comment_row(
+  id: String,
+  author_user_id: String,
+  author_name: String,
+  body: String,
+  created_at: String,
+  updated_at: String,
+) -> IssueCommentRow {
+  IssueCommentRow(
+    id:,
+    author_user_id:,
+    author_name:,
+    body:,
     created_at:,
     updated_at:,
   )

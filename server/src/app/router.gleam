@@ -1,6 +1,7 @@
 import app/routes/api_routes
 import app/routes/clerk
 import app/routes/internal_auth
+import app/routes/issue_routes
 import app/routes/merge_request_routes
 import app/routes/repo_browse_routes
 import app/routes/repo_settings_routes
@@ -69,6 +70,28 @@ pub fn handle_request(req: Request, ctx: Context) -> Response {
                 _ -> wisp.method_not_allowed([http.Get, http.Post])
               }
             }
+            ["api", "orgs", slug, "repos", name, "issues"] -> {
+              case req.method {
+                http.Get -> issue_routes.list_issues(req, ctx, slug, name)
+                http.Post -> issue_routes.create_issue(req, ctx, slug, name)
+                _ -> wisp.method_not_allowed([http.Get, http.Post])
+              }
+            }
+            ["api", "orgs", _slug, "repos", _name, "issues", "new"] ->
+              wisp.not_found()
+            ["api", "orgs", slug, "repos", name, "issues", num, "close"] ->
+              issue_routes.close_issue_route(req, ctx, slug, name, num)
+            ["api", "orgs", slug, "repos", name, "issues", num, "comments"] -> {
+              case req.method {
+                http.Get ->
+                  issue_routes.list_comments(req, ctx, slug, name, num)
+                http.Post ->
+                  issue_routes.create_comment(req, ctx, slug, name, num)
+                _ -> wisp.method_not_allowed([http.Get, http.Post])
+              }
+            }
+            ["api", "orgs", slug, "repos", name, "issues", num] ->
+              issue_routes.get_issue_detail(req, ctx, slug, name, num)
             ["api", "orgs", slug, "repos", name, "merge-requests"] -> {
               case req.method {
                 http.Get ->

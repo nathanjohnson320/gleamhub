@@ -1,4 +1,4 @@
-\restrict UCcYqh1sf5UaLAW1weI7b7TGHZqURFjhkR49CQnF9sfQQ4WWSntx2EQUsfPCD2w
+\restrict 5x8kGMBortY6s8hNh48GRatPh8a1XTyIxZpA2JHAfF9d0GrpcMVEtvft3GG7lGv
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 18.3
@@ -18,6 +18,49 @@ SET row_security = off;
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
+
+--
+-- Name: issue_comments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.issue_comments (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    issue_id uuid NOT NULL,
+    author_user_id character varying(255) NOT NULL,
+    body text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: issues; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.issues (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    repository_id uuid NOT NULL,
+    number integer NOT NULL,
+    title character varying(255) NOT NULL,
+    description text,
+    author_user_id character varying(255) NOT NULL,
+    state character varying(32) NOT NULL,
+    closed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.items (
+    id character varying(64) NOT NULL,
+    title character varying(255) NOT NULL,
+    status character varying(255) NOT NULL
+);
+
 
 --
 -- Name: merge_request_comments; Type: TABLE; Schema: public; Owner: -
@@ -144,6 +187,38 @@ CREATE TABLE public.users (
 
 
 --
+-- Name: issue_comments issue_comments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.issue_comments
+    ADD CONSTRAINT issue_comments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: issues issues_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.issues
+    ADD CONSTRAINT issues_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: issues issues_repository_id_number_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.issues
+    ADD CONSTRAINT issues_repository_id_number_key UNIQUE (repository_id, number);
+
+
+--
+-- Name: items items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.items
+    ADD CONSTRAINT items_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: merge_request_comments merge_request_comments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -256,6 +331,27 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: issue_comments_issue_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX issue_comments_issue_id_idx ON public.issue_comments USING btree (issue_id);
+
+
+--
+-- Name: issues_repository_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX issues_repository_id_idx ON public.issues USING btree (repository_id);
+
+
+--
+-- Name: issues_state_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX issues_state_idx ON public.issues USING btree (repository_id, state);
+
+
+--
 -- Name: merge_request_comments_mr_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -302,6 +398,38 @@ CREATE INDEX repositories_organization_id_idx ON public.repositories USING btree
 --
 
 CREATE INDEX ssh_public_keys_key_blob_idx ON public.ssh_public_keys USING btree (key_blob);
+
+
+--
+-- Name: issue_comments issue_comments_author_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.issue_comments
+    ADD CONSTRAINT issue_comments_author_user_id_fkey FOREIGN KEY (author_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: issue_comments issue_comments_issue_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.issue_comments
+    ADD CONSTRAINT issue_comments_issue_id_fkey FOREIGN KEY (issue_id) REFERENCES public.issues(id) ON DELETE CASCADE;
+
+
+--
+-- Name: issues issues_author_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.issues
+    ADD CONSTRAINT issues_author_user_id_fkey FOREIGN KEY (author_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: issues issues_repository_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.issues
+    ADD CONSTRAINT issues_repository_id_fkey FOREIGN KEY (repository_id) REFERENCES public.repositories(id) ON DELETE CASCADE;
 
 
 --
@@ -388,7 +516,7 @@ ALTER TABLE ONLY public.ssh_public_keys
 -- PostgreSQL database dump complete
 --
 
-\unrestrict UCcYqh1sf5UaLAW1weI7b7TGHZqURFjhkR49CQnF9sfQQ4WWSntx2EQUsfPCD2w
+\unrestrict 5x8kGMBortY6s8hNh48GRatPh8a1XTyIxZpA2JHAfF9d0GrpcMVEtvft3GG7lGv
 
 
 --
@@ -396,6 +524,8 @@ ALTER TABLE ONLY public.ssh_public_keys
 --
 
 INSERT INTO public.schema_migrations (version) VALUES
+    ('20240511203036'),
     ('20260527120000'),
     ('20260528120000'),
-    ('20260529120000');
+    ('20260529120000'),
+    ('20260529130000');

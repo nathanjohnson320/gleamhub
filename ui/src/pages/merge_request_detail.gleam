@@ -777,7 +777,12 @@ fn comment_item(c: MrComment) -> Element(Msg) {
       text(" · " <> c.created_at),
       meta,
     ]),
-    p([attr.class("mt-1 text-sm text-gh-ink whitespace-pre-wrap")], [text(c.body)]),
+    unsafe_raw_html(
+      "",
+      "div",
+      [attr.class("markdown-body mt-1 text-sm")],
+      markdown_body(c.body),
+    ),
   ])
 }
 

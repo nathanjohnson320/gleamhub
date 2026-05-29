@@ -16,6 +16,9 @@ pub type Route {
   MrList(String, String)
   MrNew(String, String)
   MrDetail(String, String, Int)
+  IssueList(String, String)
+  IssueNew(String, String)
+  IssueDetail(String, String, Int)
   CommitsList(String, String, String)
   RepoMissingOrg(String)
   Keys
@@ -65,6 +68,13 @@ fn from_segments(segments: List(String)) -> Route {
         Ok(n) -> MrDetail(org, repo, n)
         Error(_) -> NotFound
       }
+    ["orgs", org, "repos", repo, "issues"] -> IssueList(org, repo)
+    ["orgs", org, "repos", repo, "issues", "new"] -> IssueNew(org, repo)
+    ["orgs", org, "repos", repo, "issues", num] ->
+      case int.parse(num) {
+        Ok(n) -> IssueDetail(org, repo, n)
+        Error(_) -> NotFound
+      }
     ["orgs", org, "repos", repo, "commits", ref] ->
       CommitsList(org, repo, ref)
     ["orgs", org, "repos", repo, "commits"] -> CommitsList(org, repo, "")
@@ -94,6 +104,18 @@ pub fn mr_new_path(org: String, repo: String) -> String {
 
 pub fn mr_detail_path(org: String, repo: String, number: Int) -> String {
   mr_list_path(org, repo) <> "/" <> int.to_string(number)
+}
+
+pub fn issue_list_path(org: String, repo: String) -> String {
+  repo_home_path(org, repo) <> "/issues"
+}
+
+pub fn issue_new_path(org: String, repo: String) -> String {
+  issue_list_path(org, repo) <> "/new"
+}
+
+pub fn issue_detail_path(org: String, repo: String, number: Int) -> String {
+  issue_list_path(org, repo) <> "/" <> int.to_string(number)
 }
 
 /// True when `ref` looks like a git commit SHA (not a branch name).

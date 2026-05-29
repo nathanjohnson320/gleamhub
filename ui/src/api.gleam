@@ -222,6 +222,33 @@ pub type MrComment {
   )
 }
 
+pub type Issue {
+  Issue(
+    id: String,
+    number: Int,
+    title: String,
+    description: option.Option(String),
+    author_user_id: String,
+    state: String,
+    closed_at: option.Option(String),
+    created_at: String,
+  )
+}
+
+pub type IssueDetail {
+  IssueDetail(issue: Issue)
+}
+
+pub type IssueComment {
+  IssueComment(
+    id: String,
+    author_user_id: String,
+    author_name: String,
+    body: String,
+    created_at: String,
+  )
+}
+
 pub type MrCommit {
   MrCommit(sha: String, subject: String, author: String, committed_at: String)
 }
@@ -290,6 +317,13 @@ pub fn mr_comments_decoder() -> decode.Decoder(List(MrComment)) {
 }
 
 pub fn comment_author_label(comment: MrComment) -> String {
+  case string.trim(comment.author_name) {
+    "" -> comment.author_user_id
+    name -> name
+  }
+}
+
+pub fn issue_comment_author_label(comment: IssueComment) -> String {
   case string.trim(comment.author_name) {
     "" -> comment.author_user_id
     name -> name
@@ -367,6 +401,77 @@ pub fn mr_create_error_decoder() -> decode.Decoder(#(String, option.Option(Int))
     decode.optional(decode.int),
   )
   decode.success(#(error, existing_number))
+}
+
+pub fn issue_decoder() -> decode.Decoder(Issue) {
+  use id <- decode.field("id", decode.string)
+  use number <- decode.field("number", decode.int)
+  use title <- decode.field("title", decode.string)
+  use description <- decode.field("description", decode.optional(decode.string))
+  use author_user_id <- decode.field("author_user_id", decode.string)
+  use state <- decode.field("state", decode.string)
+  use closed_at <- decode.field("closed_at", decode.optional(decode.string))
+  use created_at <- decode.field("created_at", decode.string)
+  decode.success(Issue(
+    id:,
+    number:,
+    title:,
+    description:,
+    author_user_id:,
+    state:,
+    closed_at:,
+    created_at:,
+  ))
+}
+
+pub fn issues_decoder() -> decode.Decoder(List(Issue)) {
+  use issues <- decode.field("issues", decode.list(issue_decoder()))
+  decode.success(issues)
+}
+
+pub fn issue_detail_decoder() -> decode.Decoder(IssueDetail) {
+  use issue <- decode.field("issue", issue_decoder())
+  decode.success(IssueDetail(issue:))
+}
+
+pub fn issue_comments_decoder() -> decode.Decoder(List(IssueComment)) {
+  use comments <- decode.field("comments", decode.list(issue_comment_decoder()))
+  decode.success(comments)
+}
+
+pub fn issue_comment_decoder() -> decode.Decoder(IssueComment) {
+  use id <- decode.field("id", decode.string)
+  use author_user_id <- decode.field("author_user_id", decode.string)
+  use author_name <- decode.field("author_name", decode.string)
+  use body <- decode.field("body", decode.string)
+  use created_at <- decode.field("created_at", decode.string)
+  decode.success(IssueComment(
+    id:,
+    author_user_id:,
+    author_name:,
+    body:,
+    created_at:,
+  ))
+}
+
+pub fn create_issue_body(
+  title: String,
+  description: option.Option(String),
+) -> json.Json {
+  json.object([
+    #("title", json.string(title)),
+    #(
+      "description",
+      case description {
+        option.Some(d) -> json.string(d)
+        option.None -> json.null()
+      },
+    ),
+  ])
+}
+
+pub fn create_issue_comment_body(body: String) -> json.Json {
+  json.object([#("body", json.string(body))])
 }
 
 pub fn create_mr_body(
