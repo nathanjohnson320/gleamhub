@@ -15,7 +15,7 @@ fn is_ui_route(segments: List(String)) -> Bool {
     ["orgs"] -> True
     ["orgs", _] -> True
     ["orgs", _, "repos", _, .._] -> True
-    ["keys"] -> True
+    ["keys"] | ["settings", .._] -> True
     ["profile"] -> True
     _ -> False
   }

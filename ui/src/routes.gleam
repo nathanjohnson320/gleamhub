@@ -45,7 +45,7 @@ fn decode_segment(segment: String) -> String {
 fn from_segments(segments: List(String)) -> Route {
   case segments {
     [] | ["orgs"] -> Orgs
-    ["keys"] -> Keys
+    ["keys"] | ["settings", "ssh-keys"] -> Keys
     ["orgs", slug] -> OrgRepos(slug)
     ["orgs", "repos", repo] -> RepoMissingOrg(repo)
     ["orgs", org, "repos", repo] -> RepoView(Home, org, repo, "", "")
@@ -66,6 +66,10 @@ fn from_segments(segments: List(String)) -> Route {
 
 fn join_path(segments: List(String)) -> String {
   string.join(segments, with: "/")
+}
+
+pub fn keys_path() -> String {
+  "/settings/ssh-keys"
 }
 
 pub fn repo_home_path(org: String, repo: String) -> String {

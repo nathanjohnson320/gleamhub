@@ -20,7 +20,7 @@ import pages/orgs
 import pages/repo_view
 import routes.{
   type Route, Blob, Keys, MrDetail, MrList, MrNew, NotFound, OrgRepos, Orgs,
-  RepoMissingOrg, RepoView, from_uri,
+  RepoMissingOrg, RepoView, from_uri, keys_path,
 }
 
 pub fn main(
@@ -47,6 +47,7 @@ type Model {
     mr: option.Option(merge_requests.Model),
     mr_detail: option.Option(merge_request_detail.Model),
     keys: keys.Model,
+    user_menu_open: Bool,
   )
 }
 
@@ -65,6 +66,7 @@ pub type Msg {
   ClerkSessionUpdated(String)
   OpenAccount
   SignOut
+  ToggleUserMenu
 }
 
 fn init(flags: Flags) -> #(Model, Effect(Msg)) {
@@ -88,6 +90,7 @@ fn init(flags: Flags) -> #(Model, Effect(Msg)) {
       mr: mr_model(route),
       mr_detail: mr_detail_model(route),
       keys: keys.init(),
+      user_menu_open: False,
     ),
     effect.batch([
       modem.init(fn(u) { OnRouteChange(from_uri(u)) }),
@@ -205,6 +208,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
             repo_view: repo_view_model(route),
             mr: mr_model(route),
             mr_detail: mr_detail_model(route),
+            user_menu_open: False,
           ),
           route_effect(model.config, route),
         )
@@ -267,8 +271,18 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       let model = with_refreshed_session(model, auth.user_from_json(user_json))
       #(model, route_effect(model.config, model.route))
     }
-    OpenAccount -> #(model, clerk_auth.open_account_effect())
-    SignOut -> #(model, clerk_auth.sign_out_effect())
+    OpenAccount -> #(
+      Model(..model, user_menu_open: False),
+      clerk_auth.open_account_effect(),
+    )
+    SignOut -> #(
+      Model(..model, user_menu_open: False),
+      clerk_auth.sign_out_effect(),
+    )
+    ToggleUserMenu -> #(
+      Model(..model, user_menu_open: !model.user_menu_open),
+      effect.none(),
+    )
   }
 }
 
@@ -290,33 +304,94 @@ fn nav_link(
 fn nav_active(current: Route, link: Route) -> Bool {
   case current, link {
     Orgs, Orgs -> True
-    Keys, Keys -> True
     OrgRepos(_), Orgs -> False
-    OrgRepos(_), Keys -> False
     RepoView(_, _, _, _, _), Orgs -> False
-    RepoView(_, _, _, _, _), Keys -> False
     _, _ -> current == link
   }
 }
 
-fn user_chip(user: auth.User) -> Element(Msg) {
-  div([attr.class("flex items-center gap-2")], [
-    span(
+fn user_menu_item_class(active: Bool) -> String {
+  case active {
+    True ->
+      "block w-full rounded-md px-3 py-2 text-left text-sm font-medium text-white bg-white/10"
+    False ->
+      "block w-full rounded-md px-3 py-2 text-left text-sm text-white/90 transition hover:bg-white/10 hover:text-white"
+  }
+}
+
+fn user_menu(user: auth.User, route: Route, open: Bool) -> Element(Msg) {
+  let keys_active = route == Keys
+  div([attr.class("relative")], [
+    button(
       [
+        attr.type_("button"),
         attr.class(
-          "flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 text-xs font-semibold text-white",
+          "flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 transition hover:bg-white/10",
         ),
+        event.on_click(ToggleUserMenu),
+        attr.attribute("aria-expanded", case open {
+          True -> "true"
+          False -> "false"
+        }),
+        attr.attribute("aria-haspopup", "true"),
       ],
-      [text(user.initials)],
-    ),
-    span(
       [
-        attr.class(
-          "hidden max-w-[10rem] truncate text-sm text-white/90 sm:inline",
+        span(
+          [
+            attr.class(
+              "flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-white/10 text-xs font-semibold text-white",
+            ),
+          ],
+          [text(user.initials)],
         ),
+        span(
+          [
+            attr.class(
+              "hidden max-w-[10rem] truncate text-sm text-white/90 sm:inline",
+            ),
+          ],
+          [text(auth.display_name(user))],
+        ),
+        span([attr.class("text-xs text-white/60")], [text("▾")]),
       ],
-      [text(auth.display_name(user))],
     ),
+    case open {
+      True ->
+        div(
+          [
+            attr.class(
+              "absolute right-0 z-50 mt-2 min-w-[12rem] rounded-lg border border-white/10 bg-slate-800 p-1 shadow-lg",
+            ),
+          ],
+          [
+            a(
+              [
+                attr.class(user_menu_item_class(keys_active)),
+                attr.href(keys_path()),
+              ],
+              [text("SSH keys")],
+            ),
+            button(
+              [
+                attr.class(user_menu_item_class(False)),
+                attr.type_("button"),
+                event.on_click(OpenAccount),
+              ],
+              [text("Account")],
+            ),
+            div([attr.class("my-1 border-t border-white/10")], []),
+            button(
+              [
+                attr.class(user_menu_item_class(False)),
+                attr.type_("button"),
+                event.on_click(SignOut),
+              ],
+              [text("Sign out")],
+            ),
+          ],
+        )
+      False -> text("")
+    },
   ])
 }
 
@@ -392,63 +467,46 @@ fn view(model: Model) -> Element(Msg) {
         div(
           [
             attr.class(
-              "mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6",
+              "mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6",
             ),
           ],
           [
-            a(
-              [
-                attr.href("/orgs"),
-                attr.class("flex items-center gap-2 no-underline"),
-              ],
-              [
-                span(
-                  [
-                    attr.class(
-                      "flex h-9 w-9 items-center justify-center rounded-lg bg-gh-accent text-sm font-bold text-white",
-                    ),
-                  ],
-                  [text("G")],
-                ),
-                span(
-                  [
-                    attr.class(
-                      "text-lg font-semibold tracking-tight text-white",
-                    ),
-                  ],
-                  [
-                    text("Gleamhub"),
-                  ],
-                ),
-              ],
-            ),
-            nav([attr.class("flex flex-wrap items-center gap-1")], [
-              nav_link(Orgs, model.route, "/orgs", "Organizations"),
-              nav_link(Keys, model.route, "/keys", "SSH keys"),
+            div([attr.class("flex min-w-0 items-center gap-6")], [
+              a(
+                [
+                  attr.href("/orgs"),
+                  attr.class("flex shrink-0 items-center gap-2 no-underline"),
+                ],
+                [
+                  span(
+                    [
+                      attr.class(
+                        "flex h-9 w-9 items-center justify-center rounded-lg bg-gh-accent text-sm font-bold text-white",
+                      ),
+                    ],
+                    [text("G")],
+                  ),
+                  span(
+                    [
+                      attr.class(
+                        "text-lg font-semibold tracking-tight text-white",
+                      ),
+                    ],
+                    [text("Gleamhub")],
+                  ),
+                ],
+              ),
+              case model.auth_user {
+                option.Some(_) ->
+                  nav([attr.class("flex items-center gap-1")], [
+                    nav_link(Orgs, model.route, "/orgs", "Organizations"),
+                  ])
+                option.None -> text("")
+              },
             ]),
             case model.auth_user {
               option.Some(user) ->
-                div([attr.class("flex items-center gap-2")], [
-                  user_chip(user),
-                  button(
-                    [
-                      attr.class(components.btn_secondary <> " !text-xs"),
-                      attr.type_("button"),
-                      event.on_click(OpenAccount),
-                    ],
-                    [text("Account")],
-                  ),
-                  button(
-                    [
-                      attr.class(
-                        "rounded-lg px-3 py-2 text-sm font-medium text-white/80 transition hover:bg-white/10 hover:text-white",
-                      ),
-                      attr.type_("button"),
-                      event.on_click(SignOut),
-                    ],
-                    [text("Sign out")],
-                  ),
-                ])
+                user_menu(user, model.route, model.user_menu_open)
               option.None -> text("")
             },
           ],

@@ -106,7 +106,7 @@ pub fn view(model: Model) -> Element(Msg) {
   div([attr.class(components.page)], [
     components.page_header(
       "SSH keys",
-      "Add keys to authenticate git push and pull over SSH.",
+      "Account settings — add keys to authenticate git push and pull over SSH.",
     ),
     case model.error {
       option.Some(e) -> components.error_alert(e)
