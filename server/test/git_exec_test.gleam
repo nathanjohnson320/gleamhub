@@ -176,6 +176,19 @@ pub fn init_bare_repo_test() {
   let _ = simplifile.delete(root)
 }
 
+pub fn install_repo_hooks_test() {
+  let id = uuid.to_string(uuid.v7())
+  let root = "/tmp/gleamhub_hooks_" <> id
+  let disk = "test-org/hooked.git"
+  let assert Ok(Nil) = git_exec.init_bare_repo(root, disk)
+  let git_dir = git_exec.repo_path(root, disk)
+  let assert Ok(Nil) = git_exec.install_repo_hooks(root, disk)
+  let hook_path = git_dir <> "/hooks/pre-receive"
+  let assert Ok(True) = simplifile.is_file(hook_path)
+  let _ = git_exec.remove_bare_repo(root, disk)
+  let _ = simplifile.delete(root)
+}
+
 pub fn merge_twice_is_idempotent_test() {
   let git_dir = setup_fixture_repo()
   let assert Ok(first_sha) =

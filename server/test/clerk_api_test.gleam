@@ -1,6 +1,9 @@
 import app/clerk_api.{
-  type ClerkEmail, type ClerkUser, ClerkEmail, ClerkUser, display_name,
+  type ClerkEmail, type ClerkUser, ClerkEmail, ClerkUser, Client, client_from_env,
+  decode_clerk_users, display_name, hydrate_comments,
 }
+import app/database
+import dot_env/env
 import gleam/option
 import gleeunit
 
@@ -79,4 +82,75 @@ pub fn display_name_first_only_test() {
       [],
       option.None,
     ))
+}
+
+pub fn display_name_last_only_test() {
+  let assert "Lovelace" =
+    display_name(user(
+      option.None,
+      option.Some("Lovelace"),
+      option.None,
+      [],
+      option.None,
+    ))
+}
+
+pub fn display_name_whitespace_name_ignored_test() {
+  let assert "user_1" =
+    display_name(user(
+      option.Some("  "),
+      option.Some("  "),
+      option.None,
+      [],
+      option.None,
+    ))
+}
+
+pub fn hydrate_comments_empty_test() {
+  let client = Client(secret_key: "sk_test")
+  let assert [] = hydrate_comments(client, [])
+}
+
+pub fn hydrate_comments_keeps_rows_on_lookup_failure_test() {
+  let client = Client(secret_key: "sk_test_invalid")
+  let comments = [
+    database.MergeRequestCommentRow(
+      id: "c1",
+      author_user_id: "user_unknown",
+      author_name: "",
+      body: "note",
+      file_path: option.None,
+      line: option.None,
+      created_at: "1",
+      updated_at: "1",
+    ),
+  ]
+  let result = hydrate_comments(client, comments)
+  let assert [comment] = result
+  let assert "note" = comment.body
+}
+
+pub fn client_from_env_reads_secret_test() {
+  let _ = env.set("CLERK_SECRET_KEY", "sk_test_key")
+  let assert option.Some(client) = client_from_env()
+  let assert "sk_test_key" = client.secret_key
+}
+
+pub fn client_from_env_empty_is_none_test() {
+  let _ = env.set("CLERK_SECRET_KEY", "   ")
+  let assert option.None = client_from_env()
+}
+
+pub fn decode_clerk_users_list_response_test() {
+  let body =
+    "[{\"id\":\"user_1\",\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"username\":null,\"primary_email_address_id\":null,\"email_addresses\":[]}]"
+  let assert Ok([user]) = decode_clerk_users(body)
+  let assert "Ada Lovelace" = display_name(user)
+}
+
+pub fn decode_clerk_users_wrapped_response_test() {
+  let body =
+    "{\"data\":[{\"id\":\"user_2\",\"first_name\":null,\"last_name\":null,\"username\":\"ada\",\"primary_email_address_id\":null,\"email_addresses\":[]}]}"
+  let assert Ok([user]) = decode_clerk_users(body)
+  let assert "ada" = display_name(user)
 }

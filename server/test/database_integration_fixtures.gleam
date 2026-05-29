@@ -1,6 +1,8 @@
 import app/database
+import app/sql
 import gleam/option
 import pog
+import youid/uuid
 
 const ed25519_public_key =
   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKL2abstV7VnH5rElnPMPNO1F test@example.com"
@@ -28,6 +30,19 @@ pub fn seed_org(
   seed_user(db, owner_id)
   let assert Ok(org) = database.create_org(db, slug, "Org " <> slug, owner_id)
   org
+}
+
+pub fn seed_org_member(
+  db: pog.Connection,
+  org_slug: String,
+  user_id: String,
+  role: String,
+) -> Nil {
+  seed_user(db, user_id)
+  let assert Ok(option.Some(org)) = database.get_org_by_slug(db, org_slug)
+  let assert Ok(org_uuid) = uuid.from_string(org.id)
+  let assert Ok(_) = sql.org_members_insert(db, org_uuid, user_id, role)
+  Nil
 }
 
 pub fn seed_repo(

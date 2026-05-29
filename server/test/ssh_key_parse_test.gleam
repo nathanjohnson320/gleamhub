@@ -45,3 +45,14 @@ pub fn parse_ecdsa_test() {
       "ecdsa-sha2-nistp256 AAAA comment",
     )
 }
+
+pub fn parse_ecdsa_custom_curve_test() {
+  let assert Ok(parsed) =
+    ssh_key_parse.parse("ecdsa-sha2-custom AAAA comment")
+  let assert True = string.contains(parsed.public_key, "ecdsa-sha2-custom")
+}
+
+pub fn parse_ecdsa_nistp384_test() {
+  let assert Ok(_) =
+    ssh_key_parse.parse("ecdsa-sha2-nistp384 AAAA comment")
+}

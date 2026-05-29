@@ -54,4 +54,5 @@ pub fn parent_path_test() {
   let assert option.Some("") = git_path.parent_path("file.txt")
   let assert option.Some("src/lib") = git_path.parent_path("src/lib/foo.gleam")
   let assert option.Some("a") = git_path.parent_path("a/b")
+  let assert option.Some("") = git_path.parent_path("")
 }

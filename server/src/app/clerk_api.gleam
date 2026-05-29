@@ -52,6 +52,11 @@ pub fn client_from_env() -> option.Option(Client) {
   }
 }
 
+/// Decode a Clerk users list API response (for tests).
+pub fn decode_clerk_users(body: String) -> Result(List(ClerkUser), ClerkError) {
+  decode_users(body)
+}
+
 pub fn hydrate_comments(
   client: Client,
   comments: List(MergeRequestCommentRow),
