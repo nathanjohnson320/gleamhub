@@ -14,7 +14,8 @@ import lustre/attribute as attr
 import lustre/effect.{type Effect, batch, none}
 import lustre/element.{type Element, text, unsafe_raw_html}
 import lustre/element/html.{
-  a, button, div, form, h2, h3, li, ol, option, p, select, span, textarea, ul,
+  a, button, div, form, h2, h3, input, label, li, ol, option, p, select, span,
+  textarea, ul,
 }
 import lustre/event
 import lustre_http
@@ -47,6 +48,7 @@ pub type Model {
     comment_line: option.Option(Int),
     show_merge_confirm: Bool,
     merge_method: api.MergeMethod,
+    delete_source_branch: Bool,
     loading: Bool,
     commits_loading: Bool,
     copied_commit_sha: option.Option(String),
@@ -71,6 +73,7 @@ pub type Msg {
   SelectFile(String)
   CopyCommitSha(String)
   MergeMethodChanged(api.MergeMethod)
+  DeleteSourceBranchChanged(Bool)
   ShowMergeConfirm
   CancelMergeConfirm
   Merge
@@ -96,6 +99,7 @@ pub fn init(org_slug: String, repo_name: String, number: Int) -> Model {
     comment_line: option.None,
     show_merge_confirm: False,
     merge_method: api.MergeCommit,
+    delete_source_branch: True,
     loading: True,
     commits_loading: False,
     copied_commit_sha: option.None,
@@ -316,6 +320,10 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
       Model(..model, merge_method: method),
       none(),
     )
+    DeleteSourceBranchChanged(delete) -> #(
+      Model(..model, delete_source_branch: delete),
+      none(),
+    )
     ShowMergeConfirm -> #(Model(..model, show_merge_confirm: True), none())
     CancelMergeConfirm -> #(Model(..model, show_merge_confirm: False), none())
     Merge -> #(
@@ -323,7 +331,10 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
       lustre_http.post(
         config,
         api_base(config, model) <> "/merge",
-        api.merge_request_merge_body(model.merge_method),
+        api.merge_request_merge_body(
+          model.merge_method,
+          model.delete_source_branch,
+        ),
         lustre_http.expect_json(api.merge_request_decoder(), Merged),
       ),
     )
@@ -422,13 +433,51 @@ fn detail_view(
         p([attr.class("mt-1 text-sm text-gh-muted")], [
           text(mr.source_branch <> " → " <> mr.target_branch <> " · " <> mr.state),
         ]),
-        merge_check_banner(detail.merge_check),
+        merge_status_banner(model, mr, detail.merge_check),
       ]),
       action_buttons(model, mr, detail.merge_check),
     ]),
     error,
     tab_bar(model.tab),
     tab_content(model, mr),
+  ])
+}
+
+fn merge_status_banner(
+  model: Model,
+  mr: MergeRequest,
+  check: MergeCheck,
+) -> Element(Msg) {
+  case mr.state {
+    "merged" -> merged_banner(model, mr)
+    "closed" ->
+      p([attr.class("mt-2 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700")], [
+        text("Closed without merging."),
+      ])
+    _ -> merge_check_banner(check)
+  }
+}
+
+fn merged_banner(model: Model, mr: MergeRequest) -> Element(Msg) {
+  let merge_ref = case mr.merge_commit_sha {
+    option.Some(sha) ->
+      a(
+        [
+          attr.href(routes.commit_tree_path(model.org_slug, model.repo_name, sha)),
+          attr.class("font-mono font-semibold text-violet-800 hover:underline"),
+        ],
+        [text(short_sha(sha))],
+      )
+    option.None -> text("")
+  }
+  let merged_time = case mr.merged_at {
+    option.Some(at) -> " · " <> time_format.format_commit_time(at)
+    option.None -> ""
+  }
+  p([attr.class("mt-2 rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-950")], [
+    text("Merged " <> mr.source_branch <> " into " <> mr.target_branch),
+    text(merged_time <> " · "),
+    merge_ref,
   ])
 }
 
@@ -512,9 +561,26 @@ fn merge_confirm_popover(
       attr.role("dialog"),
     ],
     [
-      p([attr.class("mb-4 text-sm leading-snug text-gh-ink")], [
+      p([attr.class("mb-3 text-sm leading-snug text-gh-ink")], [
         text(merge_confirm_message(model, mr)),
       ]),
+      label(
+        [
+          attr.class(
+            "mb-4 flex cursor-pointer items-center gap-2 text-sm text-gh-ink",
+          ),
+        ],
+        [
+          input(
+            [
+              attr.type_("checkbox"),
+              attr.checked(model.delete_source_branch),
+              event.on_check(DeleteSourceBranchChanged),
+            ],
+          ),
+          text("Delete branch " <> mr.source_branch),
+        ],
+      ),
       div([attr.class("flex gap-2")], [
         button(
           [

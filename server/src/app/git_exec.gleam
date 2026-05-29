@@ -194,6 +194,7 @@ fn run_git(git_dir: String, args: List(String)) -> Result(String, GitError) {
         || string.contains(msg, "does not exist")
         || string.contains(msg, "exists on disk, but not in")
         || string.contains(msg, "bad revision")
+        || string.contains(msg, "unknown revision")
       {
         True -> Error(NotFound)
         False ->
@@ -603,6 +604,184 @@ pub fn can_merge(
   case string.contains(out, "CONFLICT") {
     True -> Ok(MergeCheck(mergeable: False, message: "Merge conflicts"))
     False -> Ok(MergeCheck(mergeable: True, message: ""))
+  }
+}
+
+fn parent_refs(
+  git_dir: String,
+  sha: String,
+) -> Result(#(String, option.Option(String)), GitError) {
+  use p1 <- result.try(run_git(git_dir, ["rev-parse", sha <> "^1"]))
+  let p2 = case run_git(git_dir, ["rev-parse", sha <> "^2"]) {
+    Ok(out) -> option.Some(string.trim(out))
+    Error(_) -> option.None
+  }
+  Ok(#(string.trim(p1), p2))
+}
+
+fn commits_at_merge(git_dir: String, merge_commit_sha: String) -> Result(
+  List(CommitEntry),
+  GitError,
+) {
+  use parents <- result.try(parent_refs(git_dir, merge_commit_sha))
+  let #(base, source_tip) = parents
+  let range = case source_tip {
+    option.Some(head) -> base <> ".." <> head
+    option.None -> merge_commit_sha <> "^1.." <> merge_commit_sha
+  }
+  use out <- result.try(run_git(git_dir, [
+    "log",
+    "--format=%H%x09%s%x09%an%x09%at",
+    range,
+  ]))
+  Ok(parse_commits(out))
+}
+
+fn diff_summary_at_merge(
+  git_dir: String,
+  merge_commit_sha: String,
+) -> Result(List(DiffFile), GitError) {
+  use parents <- result.try(parent_refs(git_dir, merge_commit_sha))
+  let #(base, source_tip) = parents
+  let range = case source_tip {
+    option.Some(head) -> base <> "..." <> head
+    option.None -> merge_commit_sha <> "^1..." <> merge_commit_sha
+  }
+  use out <- result.try(run_git(git_dir, ["diff", "--numstat", range]))
+  Ok(parse_numstat(out))
+}
+
+fn diff_patch_at_merge(
+  git_dir: String,
+  merge_commit_sha: String,
+  path: String,
+) -> Result(String, GitError) {
+  case git_path.normalize(path) {
+    Error(_) -> Error(InvalidPath)
+    Ok(norm) -> {
+      use parents <- result.try(parent_refs(git_dir, merge_commit_sha))
+      let #(base, source_tip) = parents
+      let range = case source_tip {
+        option.Some(head) -> base <> "..." <> head
+        option.None -> merge_commit_sha <> "^1..." <> merge_commit_sha
+      }
+      use patch <- result.try(run_git(git_dir, [
+        "diff",
+        "-U3",
+        range,
+        "--",
+        norm,
+      ]))
+      case string.length(patch) > max_diff_bytes {
+        True -> Error(BlobTooLarge)
+        False -> Ok(patch)
+      }
+    }
+  }
+}
+
+pub fn merge_check_for_request(
+  git_dir: String,
+  target_branch: String,
+  source_branch: String,
+  state: String,
+) -> Result(MergeCheck, GitError) {
+  case state {
+    "open" ->
+      case can_merge(git_dir, target_branch, source_branch) {
+        Ok(check) -> Ok(check)
+        Error(NotFound) ->
+          Ok(MergeCheck(mergeable: False, message: "Source branch not found"))
+        Error(e) -> Error(e)
+      }
+    "merged" -> Ok(MergeCheck(mergeable: False, message: "Already merged"))
+    "closed" -> Ok(MergeCheck(mergeable: False, message: "Closed"))
+    _ -> Ok(MergeCheck(mergeable: False, message: ""))
+  }
+}
+
+fn merge_request_snapshot_sha(
+  state: String,
+  merge_commit_sha: option.Option(String),
+) -> option.Option(String) {
+  case state, merge_commit_sha {
+    "merged", option.Some(sha) -> option.Some(sha)
+    _, _ -> option.None
+  }
+}
+
+pub fn commits_for_merge_request(
+  git_dir: String,
+  target_branch: String,
+  source_branch: String,
+  state: String,
+  merge_commit_sha: option.Option(String),
+) -> Result(List(CommitEntry), GitError) {
+  case merge_request_snapshot_sha(state, merge_commit_sha) {
+    option.Some(sha) -> commits_at_merge(git_dir, sha)
+    option.None ->
+      case commits_between(git_dir, target_branch, source_branch) {
+        Ok(commits) -> Ok(commits)
+        Error(_) ->
+          case merge_commit_sha {
+            option.Some(sha) -> commits_at_merge(git_dir, sha)
+            option.None -> Ok([])
+          }
+      }
+  }
+}
+
+pub fn diff_summary_for_merge_request(
+  git_dir: String,
+  target_branch: String,
+  source_branch: String,
+  state: String,
+  merge_commit_sha: option.Option(String),
+) -> Result(List(DiffFile), GitError) {
+  case merge_request_snapshot_sha(state, merge_commit_sha) {
+    option.Some(sha) -> diff_summary_at_merge(git_dir, sha)
+    option.None ->
+      case diff_summary(git_dir, target_branch, source_branch) {
+        Ok(files) -> Ok(files)
+        Error(_) ->
+          case merge_commit_sha {
+            option.Some(sha) -> diff_summary_at_merge(git_dir, sha)
+            option.None -> Ok([])
+          }
+      }
+  }
+}
+
+pub fn diff_patch_for_merge_request(
+  git_dir: String,
+  target_branch: String,
+  source_branch: String,
+  state: String,
+  merge_commit_sha: option.Option(String),
+  path: String,
+) -> Result(String, GitError) {
+  case merge_request_snapshot_sha(state, merge_commit_sha) {
+    option.Some(sha) -> diff_patch_at_merge(git_dir, sha, path)
+    option.None ->
+      case diff_patch(git_dir, target_branch, source_branch, path) {
+        Ok(patch) -> Ok(patch)
+        Error(_) ->
+          case merge_commit_sha {
+            option.Some(sha) -> diff_patch_at_merge(git_dir, sha, path)
+            option.None -> Ok("")
+          }
+      }
+  }
+}
+
+pub fn delete_branch(git_dir: String, branch: String) -> Result(Nil, GitError) {
+  case git_path.normalize_branch(branch) {
+    Error(_) -> Error(InvalidBranch)
+    Ok(name) ->
+      case run_git(git_dir, ["update-ref", "-d", "refs/heads/" <> name]) {
+        Ok(_) -> Ok(Nil)
+        Error(e) -> Error(e)
+      }
   }
 }
 

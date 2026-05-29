@@ -11,6 +11,7 @@ import gleam/int
 import gleam/json
 import gleam/list
 import gleam/option
+import gleam/result
 import gleam/string
 import wisp.{type Request, type Response}
 
@@ -220,7 +221,14 @@ pub fn get_merge_request_detail(
         Error(r) -> r
         Ok(number) ->
           with_mr(ctx, org_slug, repo_name, number, fn(mr, git_dir) {
-            case git_exec.can_merge(git_dir, mr.target_branch, mr.source_branch) {
+            case
+              git_exec.merge_check_for_request(
+                git_dir,
+                mr.target_branch,
+                mr.source_branch,
+                mr.state,
+              )
+            {
               Ok(check) ->
                 json.object([
                   #("merge_request", json_api.merge_request_json(mr)),
@@ -250,10 +258,12 @@ pub fn list_commits(
         Ok(number) ->
           with_mr(ctx, org_slug, repo_name, number, fn(mr, git_dir) {
             case
-              git_exec.commits_between(
+              git_exec.commits_for_merge_request(
                 git_dir,
                 mr.target_branch,
                 mr.source_branch,
+                mr.state,
+                mr.merge_commit_sha,
               )
             {
               Ok(commits) -> json_ok(json_api.commits_json(commits), 200)
@@ -283,10 +293,12 @@ pub fn get_diff(
             case path {
               "" ->
                 case
-                  git_exec.diff_summary(
+                  git_exec.diff_summary_for_merge_request(
                     git_dir,
                     mr.target_branch,
                     mr.source_branch,
+                    mr.state,
+                    mr.merge_commit_sha,
                   )
                 {
                   Ok(files) -> json_ok(json_api.diff_files_json(files), 200)
@@ -294,10 +306,12 @@ pub fn get_diff(
                 }
               file_path ->
                 case
-                  git_exec.diff_patch(
+                  git_exec.diff_patch_for_merge_request(
                     git_dir,
                     mr.target_branch,
                     mr.source_branch,
+                    mr.state,
+                    mr.merge_commit_sha,
                     file_path,
                   )
                 {
@@ -318,19 +332,84 @@ fn merge_commit_message(mr: database.MergeRequestRow) -> String {
   }
 }
 
-fn parse_merge_method(json_body) -> Result(git_exec.MergeMethod, Response) {
+type MergeRequestBody {
+  MergeRequestBody(
+    method: git_exec.MergeMethod,
+    delete_source_branch: Bool,
+  )
+}
+
+fn parse_merge_method_string(method: option.Option(String)) -> Result(
+  git_exec.MergeMethod,
+  Response,
+) {
+  case method {
+    option.None | option.Some("merge") -> Ok(git_exec.MergeCommit)
+    option.Some("squash") -> Ok(git_exec.Squash)
+    option.Some(_) -> Error(wisp.bad_request("Invalid merge_method"))
+  }
+}
+
+fn parse_merge_body(json_body) -> Result(MergeRequestBody, Response) {
   let decoder = {
     use merge_method <- decode.field(
       "merge_method",
       decode.optional(decode.string),
     )
-    decode.success(merge_method)
+    use delete_source_branch <- decode.field(
+      "delete_source_branch",
+      decode.optional(decode.bool),
+    )
+    decode.success(#(merge_method, delete_source_branch))
   }
   case decode.run(json_body, decoder) {
-    Error(_) -> Ok(git_exec.MergeCommit)
-    Ok(option.None) | Ok(option.Some("merge")) -> Ok(git_exec.MergeCommit)
-    Ok(option.Some("squash")) -> Ok(git_exec.Squash)
-    Ok(option.Some(_)) -> Error(wisp.bad_request("Invalid merge_method"))
+    Error(_) ->
+      Ok(MergeRequestBody(
+        method: git_exec.MergeCommit,
+        delete_source_branch: False,
+      ))
+    Ok(#(method_str, delete_opt)) -> {
+      use method <- result.try(parse_merge_method_string(method_str))
+      let delete = case delete_opt {
+        option.None -> False
+        option.Some(v) -> v
+      }
+      Ok(MergeRequestBody(method:, delete_source_branch: delete))
+    }
+  }
+}
+
+fn maybe_delete_source_branch(
+  ctx: Context,
+  org_slug: String,
+  repo_name: String,
+  git_dir: String,
+  source_branch: String,
+  target_branch: String,
+  delete_source_branch: Bool,
+) -> Nil {
+  case delete_source_branch {
+    False -> Nil
+    True ->
+      case source_branch == target_branch {
+        True -> Nil
+        False ->
+          case
+            database.is_branch_protected(
+              ctx.repo(),
+              org_slug,
+              repo_name,
+              source_branch,
+            )
+          {
+            Ok(True) -> Nil
+            Ok(False) | Error(_) ->
+              case git_exec.delete_branch(git_dir, source_branch) {
+                Ok(_) -> Nil
+                Error(_) -> Nil
+              }
+          }
+      }
   }
 }
 
@@ -349,9 +428,9 @@ pub fn merge_merge_request(
       case database.member_can_write(ctx.repo(), user_id(ctx), org_slug) {
         False -> wisp.response(403)
         True ->
-          case parse_merge_method(json_body) {
+          case parse_merge_body(json_body) {
             Error(r) -> r
-            Ok(method) ->
+            Ok(body) ->
               case parse_mr_number(number_str) {
                 Error(r) -> r
                 Ok(number) ->
@@ -363,7 +442,7 @@ pub fn merge_merge_request(
                             git_dir,
                             mr.target_branch,
                             mr.source_branch,
-                            method,
+                            body.method,
                             merge_commit_message(mr),
                           )
                         {
@@ -378,8 +457,19 @@ pub fn merge_merge_request(
                                 user_id(ctx),
                               )
                             {
-                              Ok(updated) ->
+                              Ok(updated) -> {
+                                let _ =
+                                  maybe_delete_source_branch(
+                                    ctx,
+                                    org_slug,
+                                    repo_name,
+                                    git_dir,
+                                    mr.source_branch,
+                                    mr.target_branch,
+                                    body.delete_source_branch,
+                                  )
                                 json_ok(json_api.merge_request_json(updated), 200)
+                              }
                               Error(_) -> wisp.internal_server_error()
                             }
                           Error(e) -> repo_browse_routes.git_error_response(e)

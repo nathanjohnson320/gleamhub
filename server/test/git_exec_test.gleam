@@ -40,13 +40,10 @@ pub fn browse_fixture_repo_test() {
       e.name == "README.md" && e.last_commit_message != ""
     })
   let assert True =
-    list.any(entries, fn(e) {
-      e.name == "src" && e.entry_type == git_exec.Tree
-    })
+    list.any(entries, fn(e) { e.name == "src" && e.entry_type == git_exec.Tree })
 
   let assert Ok(sub) = git_exec.list_tree(git_dir, "main", "src")
-  let assert True =
-    list.any(sub, fn(e) { e.name == "main.gleam" })
+  let assert True = list.any(sub, fn(e) { e.name == "main.gleam" })
 
   let assert Ok(blob) = git_exec.read_blob(git_dir, "main", "README.md")
   let assert False = blob.binary
@@ -93,17 +90,23 @@ pub fn merge_request_git_ops_test() {
   let assert True = head_commit.subject != ""
 
   let assert Ok(files) = git_exec.diff_summary(git_dir, "main", "feature")
-  let assert True =
-    list.any(files, fn(f) { f.path == "feature.txt" })
+  let assert True = list.any(files, fn(f) { f.path == "feature.txt" })
 
-  let assert Ok(patch) = git_exec.diff_patch(git_dir, "main", "feature", "feature.txt")
+  let assert Ok(patch) =
+    git_exec.diff_patch(git_dir, "main", "feature", "feature.txt")
   let assert True = string.contains(patch, "feature branch")
 
   let assert Ok(check) = git_exec.can_merge(git_dir, "main", "feature")
   let assert True = check.mergeable
 
   let assert Ok(sha) =
-    git_exec.merge_branches(git_dir, "main", "feature", git_exec.MergeCommit, "")
+    git_exec.merge_branches(
+      git_dir,
+      "main",
+      "feature",
+      git_exec.MergeCommit,
+      "",
+    )
   let assert True = sha != ""
 
   cleanup_fixture_repo(git_dir)
@@ -112,7 +115,13 @@ pub fn merge_request_git_ops_test() {
 pub fn merge_conflict_test() {
   let git_dir = setup_conflict_fixture_repo()
   let assert Error(git_exec.MergeConflict(_)) =
-    git_exec.merge_branches(git_dir, "main", "feature", git_exec.MergeCommit, "")
+    git_exec.merge_branches(
+      git_dir,
+      "main",
+      "feature",
+      git_exec.MergeCommit,
+      "",
+    )
   cleanup_fixture_repo(git_dir)
 }
 
@@ -167,8 +176,7 @@ pub fn git_not_found_test() {
   let git_dir = setup_fixture_repo()
   let assert Error(git_exec.NotFound) =
     git_exec.read_blob(git_dir, "main", "does-not-exist.txt")
-  let assert Error(_) =
-    git_exec.branch_exists(git_dir, "no-such-branch")
+  let assert Error(_) = git_exec.branch_exists(git_dir, "no-such-branch")
   cleanup_fixture_repo(git_dir)
 }
 
@@ -206,9 +214,88 @@ pub fn install_repo_hooks_test() {
 pub fn merge_twice_is_idempotent_test() {
   let git_dir = setup_fixture_repo()
   let assert Ok(first_sha) =
-    git_exec.merge_branches(git_dir, "main", "feature", git_exec.MergeCommit, "")
+    git_exec.merge_branches(
+      git_dir,
+      "main",
+      "feature",
+      git_exec.MergeCommit,
+      "",
+    )
   let assert Ok(second_sha) =
-    git_exec.merge_branches(git_dir, "main", "feature", git_exec.MergeCommit, "")
+    git_exec.merge_branches(
+      git_dir,
+      "main",
+      "feature",
+      git_exec.MergeCommit,
+      "",
+    )
   let assert True = first_sha == second_sha
+  cleanup_fixture_repo(git_dir)
+}
+
+pub fn merged_request_with_deleted_source_branch_test() {
+  let git_dir = setup_fixture_repo()
+  let assert Ok(sha) =
+    git_exec.merge_branches(
+      git_dir,
+      "main",
+      "feature",
+      git_exec.MergeCommit,
+      "",
+    )
+  let assert Ok(Nil) = git_exec.delete_branch(git_dir, "feature")
+  let assert Ok(check) =
+    git_exec.merge_check_for_request(git_dir, "main", "feature", "merged")
+  let assert False = check.mergeable
+  let assert Ok(commits) =
+    git_exec.commits_for_merge_request(
+      git_dir,
+      "main",
+      "feature",
+      "merged",
+      option.Some(sha),
+    )
+  let assert True = commits != []
+  let assert Ok(files) =
+    git_exec.diff_summary_for_merge_request(
+      git_dir,
+      "main",
+      "feature",
+      "merged",
+      option.Some(sha),
+    )
+  let assert True = files != []
+  cleanup_fixture_repo(git_dir)
+}
+
+pub fn merged_request_snapshot_used_when_branch_still_exists_test() {
+  let git_dir = setup_fixture_repo()
+  let assert Ok(sha) =
+    git_exec.merge_branches(
+      git_dir,
+      "main",
+      "feature",
+      git_exec.MergeCommit,
+      "",
+    )
+  let assert Ok(Nil) = git_exec.branch_exists(git_dir, "feature")
+  let assert Ok(commits) =
+    git_exec.commits_for_merge_request(
+      git_dir,
+      "main",
+      "feature",
+      "merged",
+      option.Some(sha),
+    )
+  let assert True = commits != []
+  let assert Ok(files) =
+    git_exec.diff_summary_for_merge_request(
+      git_dir,
+      "main",
+      "feature",
+      "merged",
+      option.Some(sha),
+    )
+  let assert True = files != []
   cleanup_fixture_repo(git_dir)
 }

@@ -434,10 +434,16 @@ pub type MergeMethod {
   Squash
 }
 
-pub fn merge_request_merge_body(method: MergeMethod) -> json.Json {
+pub fn merge_request_merge_body(
+  method: MergeMethod,
+  delete_source_branch: Bool,
+) -> json.Json {
   let value = case method {
     MergeCommit -> "merge"
     Squash -> "squash"
   }
-  json.object([#("merge_method", json.string(value))])
+  json.object([
+    #("merge_method", json.string(value)),
+    #("delete_source_branch", json.bool(delete_source_branch)),
+  ])
 }

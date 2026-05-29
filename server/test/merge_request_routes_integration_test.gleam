@@ -170,6 +170,95 @@ pub fn merge_request_merge_route_test() {
   })
 }
 
+pub fn merge_request_merge_delete_source_branch_test() {
+  db_test_support.with_db(fn(db) {
+    let root = route_test_support.repos_root()
+    let #(ctx, sign) = route_test_support.authenticated(db, root)
+    let token = route_test_support.bearer_token(sign, "owner")
+    let work = seed_git_repo(db, root, "acme", "demo3", "owner")
+
+    let _ =
+      route_test_support.dispatch(
+        route_test_support.post_json(
+          "/api/orgs/acme/repos/demo3/merge-requests",
+          token,
+          json.object([
+            #("title", json.string("Merge and delete")),
+            #("description", json.null()),
+            #("source_branch", json.string("feature")),
+            #("target_branch", json.string("main")),
+          ]),
+        ),
+        ctx,
+      )
+
+    let merge =
+      route_test_support.dispatch(
+        route_test_support.post_json(
+          "/api/orgs/acme/repos/demo3/merge-requests/1/merge",
+          token,
+          json.object([
+            #("merge_method", json.string("merge")),
+            #("delete_source_branch", json.bool(True)),
+          ]),
+        ),
+        ctx,
+      )
+    let assert 200 = route_test_support.status(merge)
+    let assert True = route_test_support.contains(merge, "\"state\":\"merged\"")
+
+    let branches =
+      route_test_support.dispatch(
+        route_test_support.get(
+          "/api/orgs/acme/repos/demo3/branches",
+          option.Some(token),
+        ),
+        ctx,
+      )
+    let assert 200 = route_test_support.status(branches)
+    let assert True = route_test_support.contains(branches, "main")
+    let assert False = route_test_support.contains(branches, "feature")
+
+    let detail =
+      route_test_support.dispatch(
+        route_test_support.get(
+          "/api/orgs/acme/repos/demo3/merge-requests/1",
+          option.Some(token),
+        ),
+        ctx,
+      )
+    let assert 200 = route_test_support.status(detail)
+    let assert True = route_test_support.contains(detail, "\"state\":\"merged\"")
+    let assert True = route_test_support.contains(detail, "Already merged")
+
+    let commits =
+      route_test_support.dispatch(
+        route_test_support.get(
+          "/api/orgs/acme/repos/demo3/merge-requests/1/commits",
+          option.Some(token),
+        ),
+        ctx,
+      )
+    let assert 200 = route_test_support.status(commits)
+    let assert True = route_test_support.contains(commits, "commits")
+
+    let diff =
+      route_test_support.dispatch(
+        route_test_support.get(
+          "/api/orgs/acme/repos/demo3/merge-requests/1/diff",
+          option.Some(token),
+        ),
+        ctx,
+      )
+    let assert 200 = route_test_support.status(diff)
+    let assert True = route_test_support.contains(diff, "files")
+
+    route_test_support.cleanup_fixture_repo(work)
+    route_test_support.cleanup_repos_root(root)
+    Nil
+  })
+}
+
 pub fn merge_request_merge_squash_route_test() {
   db_test_support.with_db(fn(db) {
     let root = route_test_support.repos_root()
