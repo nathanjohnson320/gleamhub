@@ -35,7 +35,7 @@ pub fn middleware(
           token,
           using: decoder(),
           claims: auth_claims(ctx),
-          keys: [ctx.clerk_key],
+          keys: ctx.clerk_keys,
         )
       case decoded {
         Ok(user_id) -> {

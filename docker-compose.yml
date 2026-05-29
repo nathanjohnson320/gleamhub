@@ -25,7 +25,7 @@ services:
   #   environment:
   #     SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-secret-change-me-in-production}
   #     DATABASE_URL: postgres://postgres:postgres@postgres:5432/gleamhub?sslmode=disable
-  #     CLERK_JWKS: ${CLERK_JWKS}
+  #     CLERK_JWKS_URL: ${CLERK_JWKS_URL}
   #     GIT_REPOS_ROOT: /data/repos
   #     GLEAMHUB_GIT_HOST: ${GLEAMHUB_GIT_HOST:-localhost}
   #     PORT: "9999"

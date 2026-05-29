@@ -1,10 +1,10 @@
 import app/clerk_api
+import app/clerk_jwks
 import app/router
 import app/web.{Context}
 import dot_env
 import dot_env/env
 import gleam/erlang/process
-import gleam/json
 import gleam/option
 import gleam/otp/static_supervisor as supervisor
 import mist
@@ -12,8 +12,6 @@ import pog
 import simplifile
 import wisp
 import wisp/wisp_mist
-import ywt/verify_key
-
 const app_name = "server"
 
 pub fn main() {
@@ -25,8 +23,7 @@ pub fn main() {
   let assert Ok(secret_key_base) = env.get_string("SECRET_KEY_BASE")
   let assert Ok(db_url) = env.get_string("DATABASE_URL")
 
-  let assert Ok(clerk_jwks) = env.get_string("CLERK_JWKS")
-  let assert Ok(clerk_key) = json.parse(clerk_jwks, verify_key.decoder())
+  let assert Ok(clerk_keys) = clerk_jwks.load_from_env()
 
   let assert Ok(internal_api_token) = env.get_string("INTERNAL_API_TOKEN")
 
@@ -60,7 +57,7 @@ pub fn main() {
 
   let ctx =
     Context(
-      clerk_key: clerk_key,
+      clerk_keys: clerk_keys,
       static_directory: static_directory(),
       repo: fn() -> pog.Connection { pog.named_connection(pool_name) },
       git_repos_root: git_repos_root,

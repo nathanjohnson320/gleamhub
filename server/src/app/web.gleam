@@ -26,7 +26,7 @@ fn cors() {
 
 pub type Context {
   Context(
-    clerk_key: VerifyKey,
+    clerk_keys: List(VerifyKey),
     static_directory: String,
     repo: fn() -> pog.Connection,
     git_repos_root: String,

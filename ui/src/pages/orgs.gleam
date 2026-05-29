@@ -41,7 +41,7 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
       Model(
         ..model,
         error: option.Some(
-          "Unauthorized — ensure server CLERK_JWKS matches this Clerk app (see server/.env)",
+          "Unauthorized — ensure server CLERK_JWKS_URL matches this Clerk app (see server/.env)",
         ),
       ),
       effect.none(),

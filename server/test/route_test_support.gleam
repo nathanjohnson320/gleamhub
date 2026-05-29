@@ -31,7 +31,7 @@ fn context(
   clerk: option.Option(Client),
 ) -> web.Context {
   web.Context(
-    clerk_key: verify,
+    clerk_keys: [verify],
     static_directory:,
     repo: fn() { db },
     git_repos_root:,

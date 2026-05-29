@@ -11,9 +11,9 @@ import ywt/verify_key
 
 fn test_context(repo: fn() -> pog.Connection) -> web.Context {
   let sign = ywt.generate_key(algorithm.rs256)
-  let clerk_key = verify_key.derived(sign)
+  let clerk_keys = [verify_key.derived(sign)]
   web.Context(
-    clerk_key:,
+    clerk_keys:,
     static_directory: "",
     repo:,
     git_repos_root: "/tmp/gleamhub-repos",

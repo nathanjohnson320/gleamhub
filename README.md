@@ -49,19 +49,19 @@ Use **one** Clerk application for both server and UI.
    VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
    ```
 
-2. Copy a signing **JWK** into **both** `/.env` (for Docker) and `server/.env` (for local `gleam run`):
+2. Set the Clerk JWKS URL in **both** `/.env` (for Docker) and `server/.env` (for local `gleam run`):
 
    ```bash
-   CLERK_JWKS='{"use":"sig","kty":"RSA","kid":"...","alg":"RS256","n":"...","e":"AQAB"}'
+   CLERK_JWKS_URL=https://<your-clerk-domain>/.well-known/jwks.json
 
    CLERK_SECRET_KEY=sk_test_...
    ```
 
-   The server expects a **single RSA JWK object** (not the full JWKS array). You can take the first key from your Clerk JWKS URL (`https://<your-clerk-domain>/.well-known/jwks.json`) or match the format in `server/.env.example`.
+   The server fetches this JWKS document once at boot and uses all published signing keys for JWT verification.
 
 3. Restart: `docker compose up --build -d`, then `gleam run` in `server/` (and `npm run dev` in `ui/` if it was already running).
 
-If the UI shows **Unauthorized**, `CLERK_JWKS` and `VITE_CLERK_PUBLISHABLE_KEY` are from different Clerk apps or the JWK is malformed.
+If the UI shows **Unauthorized**, `CLERK_JWKS_URL` and `VITE_CLERK_PUBLISHABLE_KEY` are from different Clerk apps or the JWKS fetch failed at boot.
 
 ---
 
@@ -120,7 +120,7 @@ docker compose up postgres -d
 
 # Terminal 2 — API
 cd server
-cp .env.example .env    # skip if already copied — CLERK_JWKS + DATABASE_URL
+cp .env.example .env    # skip if already copied — CLERK_JWKS_URL + DATABASE_URL
 npm install
 npm run db:up
 gleam run
@@ -207,7 +207,7 @@ Org members with a registered SSH key can read/write all repos in that org (MVP 
 
 | Variable | Where | Description |
 |----------|-------|-------------|
-| `CLERK_JWKS` | `/.env`, `server/.env` | Single RSA JWK JSON for JWT verification |
+| `CLERK_JWKS_URL` | `/.env`, `server/.env` | Clerk JWKS URL fetched at boot for JWT verification |
 | `CLERK_SECRET_KEY` | `server/.env` | Clerk secret key (`sk_…`) for Backend API user lookups (comment author names) |
 | `VITE_CLERK_PUBLISHABLE_KEY` | `ui/.env` | Clerk publishable key |
 | `SECRET_KEY_BASE` | `/.env`, `server/.env` | Wisp session signing |
