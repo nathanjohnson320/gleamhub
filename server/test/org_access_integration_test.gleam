@@ -3,16 +3,15 @@ import app/org_access
 import app/web
 import database_integration_fixtures as fixtures
 import db_test_support
-import gleam/json
 import gleam/option
 import pog
+import ywt
+import ywt/algorithm
 import ywt/verify_key
 
-const test_clerk_jwks =
-  "{\"use\":\"sig\",\"kty\":\"RSA\",\"kid\":\"test\",\"alg\":\"RS256\",\"n\":\"mrHRfVpUF9YuLHNVjpFWkVkTZfRs8fUkNN2-xH9KIkCXIHBqwYltDyoHq-LvWutPRZC6qGE4AaJq75LMGRGsxbMKXFPnyX3HYqea-rfGyyYhDPK7DL5jbRpIxxmJZ06uF7kD4bIALAhnMrcgqagXPpdDeKSOku4Kgg6Dqpw52uEq5WAilbOnMXIx76kOW1oylBW6ZahZ9_2NzA5JmVmc8xdpUNupQjh-mHjM9rtmc_PM12FcH5UrZe2cTiFhN-5XxHTVAGgstilM5KhU-rVN-P1wAWTpsUimRnZgUlMBP10E8-1OSsg1PthA-k6vDadVpuLf__UTnD01q_cVS_jjxw\",\"e\":\"AQAB\"}"
-
 fn test_context(repo: fn() -> pog.Connection) -> web.Context {
-  let assert Ok(clerk_key) = json.parse(test_clerk_jwks, verify_key.decoder())
+  let sign = ywt.generate_key(algorithm.rs256)
+  let clerk_key = verify_key.derived(sign)
   web.Context(
     clerk_key:,
     static_directory: "",

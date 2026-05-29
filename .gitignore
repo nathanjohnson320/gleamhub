@@ -3,8 +3,18 @@
 build
 erl_crash.dump
 .env
+.env.*
+!.env.example
+!.env.*.example
 .env.test-clerk
 node_modules
+
+# Credentials and keys (never commit)
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+credentials.json
 
 # Local Clerk snippets and bare git repos (dev only)
 ui/.env.clerk-snippet
