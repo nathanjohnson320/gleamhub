@@ -9,9 +9,15 @@ A Gleam project
 
 ```sh
 gleam run   # Run the project
-gleam test  # Run the tests
+gleam test  # All tests — starts temporary Postgres via Docker on port 5433
 gleam shell # Run an Erlang shell
 ```
+
+### Database integration tests
+
+`gleam test` always starts a temporary Postgres container on port **5433** (`docker-compose.test.yml`), runs migrations, runs all tests, then tears it down. Requires Docker and Node (for `dbmate`).
+
+If Docker is not running or setup fails, **`gleam test` exits immediately** with the error.
 
 ## Installation
 

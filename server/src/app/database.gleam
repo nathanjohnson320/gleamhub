@@ -91,7 +91,7 @@ pub fn upsert_user(
   display_name: Option(String),
   email: Option(String),
 ) -> Result(Nil, pog.QueryError) {
-  sql.users_upsert(db, id, display_name, email)
+  sql.users_upsert(db, id, nullable_text(display_name), nullable_text(email))
   |> result_map_ok
 }
 
@@ -645,7 +645,7 @@ fn mr_comment_from_insert_row(row: sql.MrCommentsInsertRow) -> MergeRequestComme
   mr_comment_row(
     row.id,
     row.author_user_id,
-    row.author_name,
+    "",
     row.body,
     row.file_path,
     row.line,

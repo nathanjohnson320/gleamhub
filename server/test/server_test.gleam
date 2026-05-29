@@ -1,12 +1,8 @@
+import db_test_support
 import gleeunit
-import gleeunit/should
 
 pub fn main() {
+  db_test_support.require_db()
   gleeunit.main()
-}
-
-// gleeunit test functions end in `_test`
-pub fn hello_world_test() {
-  1
-  |> should.equal(1)
+  db_test_support.stop()
 }

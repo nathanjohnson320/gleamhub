@@ -313,7 +313,6 @@ pub type MrCommentsInsertRow {
   MrCommentsInsertRow(
     id: String,
     author_user_id: String,
-    author_name: String,
     body: String,
     file_path: Option(String),
     line: Option(Int),
@@ -341,16 +340,14 @@ pub fn mr_comments_insert(
   let decoder = {
     use id <- decode.field(0, decode.string)
     use author_user_id <- decode.field(1, decode.string)
-    use author_name <- decode.field(2, decode.string)
-    use body <- decode.field(3, decode.string)
-    use file_path <- decode.field(4, decode.optional(decode.string))
-    use line <- decode.field(5, decode.optional(decode.int))
-    use created_at <- decode.field(6, decode.string)
-    use updated_at <- decode.field(7, decode.string)
+    use body <- decode.field(2, decode.string)
+    use file_path <- decode.field(3, decode.optional(decode.string))
+    use line <- decode.field(4, decode.optional(decode.int))
+    use created_at <- decode.field(5, decode.string)
+    use updated_at <- decode.field(6, decode.string)
     decode.success(MrCommentsInsertRow(
       id:,
       author_user_id:,
-      author_name:,
       body:,
       file_path:,
       line:,
@@ -374,8 +371,6 @@ WHERE o.slug = $1 AND r.name = $2 AND mr.number = $3
 RETURNING
   id::text,
   author_user_id,
-  (
-  author_user_id AS author_name,
   body,
   file_path,
   line,
@@ -1131,6 +1126,159 @@ ORDER BY o.slug;
   |> pog.execute(db)
 }
 
+/// Runs the `pb_delete_for_repo` query
+/// defined in `./src/app/sql/pb_delete_for_repo.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn pb_delete_for_repo(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+) -> Result(pog.Returned(Nil), pog.QueryError) {
+  let decoder = decode.map(decode.dynamic, fn(_) { Nil })
+
+  "DELETE FROM protected_branches pb
+USING repositories r
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE pb.repository_id = r.id
+  AND o.slug = $1
+  AND r.name = $2;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `pb_insert` query
+/// defined in `./src/app/sql/pb_insert.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type PbInsertRow {
+  PbInsertRow(branch_name: String)
+}
+
+/// Runs the `pb_insert` query
+/// defined in `./src/app/sql/pb_insert.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn pb_insert(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+  arg_3: String,
+) -> Result(pog.Returned(PbInsertRow), pog.QueryError) {
+  let decoder = {
+    use branch_name <- decode.field(0, decode.string)
+    decode.success(PbInsertRow(branch_name:))
+  }
+
+  "INSERT INTO protected_branches (repository_id, branch_name)
+SELECT r.id, $3
+FROM repositories r
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE o.slug = $1 AND r.name = $2
+RETURNING branch_name;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.parameter(pog.text(arg_3))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `pb_is_protected` query
+/// defined in `./src/app/sql/pb_is_protected.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type PbIsProtectedRow {
+  PbIsProtectedRow(found: Int)
+}
+
+/// Runs the `pb_is_protected` query
+/// defined in `./src/app/sql/pb_is_protected.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn pb_is_protected(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+  arg_3: String,
+) -> Result(pog.Returned(PbIsProtectedRow), pog.QueryError) {
+  let decoder = {
+    use found <- decode.field(0, decode.int)
+    decode.success(PbIsProtectedRow(found:))
+  }
+
+  "SELECT 1 AS found
+FROM protected_branches pb
+INNER JOIN repositories r ON r.id = pb.repository_id
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE o.slug = $1
+  AND r.name = $2
+  AND pb.branch_name = $3
+LIMIT 1;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.parameter(pog.text(arg_3))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `pb_list` query
+/// defined in `./src/app/sql/pb_list.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type PbListRow {
+  PbListRow(branch_name: String)
+}
+
+/// Runs the `pb_list` query
+/// defined in `./src/app/sql/pb_list.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn pb_list(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+) -> Result(pog.Returned(PbListRow), pog.QueryError) {
+  let decoder = {
+    use branch_name <- decode.field(0, decode.string)
+    decode.success(PbListRow(branch_name:))
+  }
+
+  "SELECT pb.branch_name
+FROM protected_branches pb
+INNER JOIN repositories r ON r.id = pb.repository_id
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE o.slug = $1 AND r.name = $2
+ORDER BY pb.branch_name;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
 /// A row you get from running the `repos_delete` query
 /// defined in `./src/app/sql/repos_delete.sql`.
 ///
@@ -1326,8 +1474,8 @@ ORDER BY r.name;
 pub fn users_upsert(
   db: pog.Connection,
   arg_1: String,
-  arg_2: option.Option(String),
-  arg_3: option.Option(String),
+  arg_2: String,
+  arg_3: String,
 ) -> Result(pog.Returned(Nil), pog.QueryError) {
   let decoder = decode.map(decode.dynamic, fn(_) { Nil })
 
@@ -1342,117 +1490,6 @@ ON CONFLICT (id) DO UPDATE SET
     NULLIF(TRIM(EXCLUDED.email), ''),
     NULLIF(TRIM(users.email), '')
   );
-"
-  |> pog.query
-  |> pog.parameter(pog.text(arg_1))
-  |> pog.parameter(pog.nullable(pog.text, arg_2))
-  |> pog.parameter(pog.nullable(pog.text, arg_3))
-  |> pog.returning(decoder)
-  |> pog.execute(db)
-}
-
-pub type PbListRow {
-  PbListRow(branch_name: String)
-}
-
-pub fn pb_list(
-  db: pog.Connection,
-  arg_1: String,
-  arg_2: String,
-) -> Result(pog.Returned(PbListRow), pog.QueryError) {
-  let decoder = {
-    use branch_name <- decode.field(0, decode.string)
-    decode.success(PbListRow(branch_name:))
-  }
-
-  "SELECT pb.branch_name
-FROM protected_branches pb
-INNER JOIN repositories r ON r.id = pb.repository_id
-INNER JOIN organizations o ON o.id = r.organization_id
-WHERE o.slug = $1 AND r.name = $2
-ORDER BY pb.branch_name;
-"
-  |> pog.query
-  |> pog.parameter(pog.text(arg_1))
-  |> pog.parameter(pog.text(arg_2))
-  |> pog.returning(decoder)
-  |> pog.execute(db)
-}
-
-pub fn pb_delete_for_repo(
-  db: pog.Connection,
-  arg_1: String,
-  arg_2: String,
-) -> Result(pog.Returned(Nil), pog.QueryError) {
-  let decoder = decode.map(decode.dynamic, fn(_) { Nil })
-
-  "DELETE FROM protected_branches pb
-USING repositories r
-INNER JOIN organizations o ON o.id = r.organization_id
-WHERE pb.repository_id = r.id
-  AND o.slug = $1
-  AND r.name = $2;
-"
-  |> pog.query
-  |> pog.parameter(pog.text(arg_1))
-  |> pog.parameter(pog.text(arg_2))
-  |> pog.returning(decoder)
-  |> pog.execute(db)
-}
-
-pub type PbInsertRow {
-  PbInsertRow(branch_name: String)
-}
-
-pub fn pb_insert(
-  db: pog.Connection,
-  arg_1: String,
-  arg_2: String,
-  arg_3: String,
-) -> Result(pog.Returned(PbInsertRow), pog.QueryError) {
-  let decoder = {
-    use branch_name <- decode.field(0, decode.string)
-    decode.success(PbInsertRow(branch_name:))
-  }
-
-  "INSERT INTO protected_branches (repository_id, branch_name)
-SELECT r.id, $3
-FROM repositories r
-INNER JOIN organizations o ON o.id = r.organization_id
-WHERE o.slug = $1 AND r.name = $2
-RETURNING branch_name;
-"
-  |> pog.query
-  |> pog.parameter(pog.text(arg_1))
-  |> pog.parameter(pog.text(arg_2))
-  |> pog.parameter(pog.text(arg_3))
-  |> pog.returning(decoder)
-  |> pog.execute(db)
-}
-
-pub type PbIsProtectedRow {
-  PbIsProtectedRow(found: Int)
-}
-
-pub fn pb_is_protected(
-  db: pog.Connection,
-  arg_1: String,
-  arg_2: String,
-  arg_3: String,
-) -> Result(pog.Returned(PbIsProtectedRow), pog.QueryError) {
-  let decoder = {
-    use found <- decode.field(0, decode.int)
-    decode.success(PbIsProtectedRow(found:))
-  }
-
-  "SELECT 1
-FROM protected_branches pb
-INNER JOIN repositories r ON r.id = pb.repository_id
-INNER JOIN organizations o ON o.id = r.organization_id
-WHERE o.slug = $1
-  AND r.name = $2
-  AND pb.branch_name = $3
-LIMIT 1;
 "
   |> pog.query
   |> pog.parameter(pog.text(arg_1))

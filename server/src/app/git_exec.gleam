@@ -84,7 +84,7 @@ const readme_candidates = [
 ]
 
 @external(erlang, "git_exec_ffi", "init_bare")
-fn init_bare_ffi(path: String) -> Nil
+fn init_bare_ffi(path: String) -> String
 
 @external(erlang, "git_exec_ffi", "install_pre_receive_hook")
 fn install_pre_receive_hook_ffi(src: String, dest: String) -> String
@@ -126,14 +126,25 @@ pub fn init_bare_repo(root: String, disk_path: String) -> Result(Nil, String) {
   case simplifile.create_directory_all(path) {
     Error(e) -> Error("mkdir failed: " <> simplifile.describe_error(e))
     Ok(_) -> {
-      init_bare_ffi(path)
-      install_repo_hooks(root, disk_path)
+      case init_bare_ffi(path) {
+        "ok" -> install_repo_hooks(root, disk_path)
+        _ -> Error("git init failed")
+      }
     }
   }
 }
 
-pub fn is_ancestor(git_dir: String, oldrev: String, newrev: String) -> Bool {
-  is_ancestor_ffi(git_dir, oldrev, newrev) == "true"
+pub fn is_ancestor(
+  git_dir: String,
+  oldrev: String,
+  newrev: String,
+) -> Result(Bool, GitError) {
+  case is_ancestor_ffi(git_dir, oldrev, newrev) {
+    "true" -> Ok(True)
+    "false" -> Ok(False)
+    "error" -> Error(GitCommandFailed("git merge-base --is-ancestor failed"))
+    _ -> Error(GitCommandFailed("git merge-base --is-ancestor failed"))
+  }
 }
 
 pub fn is_zero_sha(sha: String) -> Bool {

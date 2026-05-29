@@ -1,5 +1,9 @@
 -module(git_exec_test_ffi).
--export([setup_fixture_repo/0, cleanup_fixture_repo/1]).
+-export([
+  setup_fixture_repo/0,
+  setup_conflict_fixture_repo/0,
+  cleanup_fixture_repo/1
+]).
 
 setup_fixture_repo() ->
   Work =
@@ -35,6 +39,34 @@ setup_fixture_repo() ->
     ++ " && git checkout -q -b feature && git add feature.txt && git -c user.email=test@test.com -c user.name=Test commit -qm feature"
   ),
   _ = os:cmd("cd " ++ quote(Work) ++ " && git checkout -q main"),
+  list_to_binary(Work).
+
+setup_conflict_fixture_repo() ->
+  Work =
+    filename:join([
+      "/tmp",
+      "gleamhub_git_conflict_" ++ integer_to_list(erlang:unique_integer([positive]))
+    ]),
+  ok = filelib:ensure_dir(filename:join([Work, "src"])),
+  ok = file:write_file(filename:join([Work, "conflict.txt"]), <<"base\n">>),
+  _ = os:cmd(
+    "cd "
+    ++ quote(Work)
+    ++ " && git init -q && git add . && git -c user.email=test@test.com -c user.name=Test commit -qm init && git branch -M main"
+  ),
+  ok = file:write_file(filename:join([Work, "conflict.txt"]), <<"feature\n">>),
+  _ = os:cmd(
+    "cd "
+    ++ quote(Work)
+    ++ " && git checkout -q -b feature && git add conflict.txt && git -c user.email=test@test.com -c user.name=Test commit -qm feature"
+  ),
+  _ = os:cmd("cd " ++ quote(Work) ++ " && git checkout -q main"),
+  ok = file:write_file(filename:join([Work, "conflict.txt"]), <<"main\n">>),
+  _ = os:cmd(
+    "cd "
+    ++ quote(Work)
+    ++ " && git add conflict.txt && git -c user.email=test@test.com -c user.name=Test commit -qm main"
+  ),
   list_to_binary(Work).
 
 cleanup_fixture_repo(PathBin) ->

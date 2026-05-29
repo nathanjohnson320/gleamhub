@@ -1,4 +1,4 @@
-SELECT 1
+SELECT 1 AS found
 FROM protected_branches pb
 INNER JOIN repositories r ON r.id = pb.repository_id
 INNER JOIN organizations o ON o.id = r.organization_id

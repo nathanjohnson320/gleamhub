@@ -96,20 +96,22 @@ fn evaluate_ref_update(
           case database.is_branch_protected(ctx.repo(), org, repo, branch_name) {
             Error(_) -> wisp.internal_server_error()
             Ok(False) -> allow()
-            Ok(True) -> {
-              let fast_forward = git_exec.is_ancestor(git_dir, oldrev, newrev)
-              case
-                ref_update_policy.check_protected_branch(
-                  branch_name,
-                  oldrev,
-                  newrev,
-                  fast_forward,
-                )
-              {
-                Ok(Nil) -> allow()
-                Error(msg) -> deny(msg)
+            Ok(True) ->
+              case git_exec.is_ancestor(git_dir, oldrev, newrev) {
+                Ok(fast_forward) ->
+                  case
+                    ref_update_policy.check_protected_branch(
+                      branch_name,
+                      oldrev,
+                      newrev,
+                      fast_forward,
+                    )
+                  {
+                    Ok(Nil) -> allow()
+                    Error(msg) -> deny(msg)
+                  }
+                Error(_) -> wisp.internal_server_error()
               }
-            }
           }
       }
     }

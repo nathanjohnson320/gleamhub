@@ -218,6 +218,24 @@ Org members with a registered SSH key can read/write all repos in that org (MVP 
 
 ---
 
+## Tests with ephemeral Postgres
+
+Unit tests (`gleam test` in `server/`) do not need a database. To run the full suite against a **temporary** Postgres that is created and removed automatically:
+
+```bash
+# from repo root
+./scripts/test-with-db.sh
+
+# or from server/
+npm run test:db
+```
+
+This starts Postgres on **port 5433** (so it does not clash with dev Postgres on 5432), runs `dbmate up` against `gleamhub_test`, runs `gleam test`, then stops the container and deletes its data. Pass extra args to `gleam test`, e.g. `./scripts/test-with-db.sh -- database_integration`.
+
+Requires Docker. Set `TEST_DATABASE_URL` in integration tests when you add them (the script exports it automatically).
+
+---
+
 ## Deployment
 
 Single platform deployment: one Wisp process, one git-ssh service, one Postgres, one shared repo volume. Per-org dedicated stacks are out of scope for this MVP.

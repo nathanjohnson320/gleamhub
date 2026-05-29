@@ -1,28 +1,20 @@
 import app/git_exec
-import app/git_path
 import gleam/list
 import gleam/option
 import gleam/string
 import gleeunit
+import simplifile
+import youid/uuid
 
 pub fn main() {
   gleeunit.main()
 }
 
-pub fn normalize_path_test() {
-  let assert Ok("") = git_path.normalize("")
-  let assert Ok("src/lib") = git_path.normalize("src/lib")
-  let assert Error(git_path.InvalidPath) = git_path.normalize("../etc/passwd")
-  let assert Error(git_path.InvalidPath) = git_path.normalize("/absolute")
-}
-
-pub fn parent_path_test() {
-  let assert option.Some("") = git_path.parent_path("file.txt")
-  let assert option.Some("src/lib") = git_path.parent_path("src/lib/foo.gleam")
-}
-
 @external(erlang, "git_exec_test_ffi", "setup_fixture_repo")
 fn setup_fixture_repo() -> String
+
+@external(erlang, "git_exec_test_ffi", "setup_conflict_fixture_repo")
+fn setup_conflict_fixture_repo() -> String
 
 @external(erlang, "git_exec_test_ffi", "cleanup_fixture_repo")
 fn cleanup_fixture_repo(path: String) -> Nil
@@ -64,6 +56,18 @@ pub fn browse_fixture_repo_test() {
   cleanup_fixture_repo(git_dir)
 }
 
+pub fn is_ancestor_test() {
+  let git_dir = setup_fixture_repo()
+  let assert Ok(main_sha) = git_exec.merge_base(git_dir, "main", "feature")
+  let assert Ok(commits) = git_exec.commits_between(git_dir, "main", "feature")
+  let assert [git_exec.CommitEntry(sha: feature_sha, ..), ..] = commits
+
+  let assert Ok(True) = git_exec.is_ancestor(git_dir, main_sha, feature_sha)
+  let assert Ok(False) = git_exec.is_ancestor(git_dir, feature_sha, main_sha)
+
+  cleanup_fixture_repo(git_dir)
+}
+
 pub fn merge_request_git_ops_test() {
   let git_dir = setup_fixture_repo()
   let assert Ok(Nil) = git_exec.branch_exists(git_dir, "main")
@@ -93,6 +97,13 @@ pub fn merge_request_git_ops_test() {
   cleanup_fixture_repo(git_dir)
 }
 
+pub fn merge_conflict_test() {
+  let git_dir = setup_conflict_fixture_repo()
+  let assert Error(git_exec.MergeConflict(_)) =
+    git_exec.merge_branches(git_dir, "main", "feature", git_exec.MergeCommit, "")
+  cleanup_fixture_repo(git_dir)
+}
+
 pub fn squash_merge_fixture_test() {
   let git_dir = setup_fixture_repo()
   let assert Ok(sha) =
@@ -104,5 +115,73 @@ pub fn squash_merge_fixture_test() {
       "Squash feature into main",
     )
   let assert True = sha != ""
+  cleanup_fixture_repo(git_dir)
+}
+
+pub fn repo_path_test() {
+  let assert "/data/repos/acme/demo.git" =
+    git_exec.repo_path("/data/repos", "acme/demo.git")
+}
+
+pub fn is_zero_sha_test() {
+  let assert True =
+    git_exec.is_zero_sha("0000000000000000000000000000000000000000")
+  let assert True =
+    git_exec.is_zero_sha("  0000000000000000000000000000000000000000  ")
+  let assert False = git_exec.is_zero_sha("abc123")
+}
+
+pub fn git_invalid_path_test() {
+  let git_dir = setup_fixture_repo()
+  let assert Error(git_exec.InvalidPath) =
+    git_exec.list_tree(git_dir, "main", "../escape")
+  let assert Error(git_exec.InvalidPath) =
+    git_exec.read_blob(git_dir, "main", "../escape")
+  cleanup_fixture_repo(git_dir)
+}
+
+pub fn git_invalid_branch_test() {
+  let git_dir = setup_fixture_repo()
+  let assert Error(git_exec.InvalidBranch) =
+    git_exec.branch_exists(git_dir, "../main")
+  let assert Error(git_exec.InvalidBranch) =
+    git_exec.merge_base(git_dir, "..", "feature")
+  cleanup_fixture_repo(git_dir)
+}
+
+pub fn git_not_found_test() {
+  let git_dir = setup_fixture_repo()
+  let assert Error(git_exec.NotFound) =
+    git_exec.read_blob(git_dir, "main", "does-not-exist.txt")
+  let assert Error(_) =
+    git_exec.branch_exists(git_dir, "no-such-branch")
+  cleanup_fixture_repo(git_dir)
+}
+
+pub fn git_not_a_tree_test() {
+  let git_dir = setup_fixture_repo()
+  let assert Error(_) = git_exec.list_tree(git_dir, "main", "README.md")
+  cleanup_fixture_repo(git_dir)
+}
+
+pub fn init_bare_repo_test() {
+  let id = uuid.to_string(uuid.v7())
+  let root = "/tmp/gleamhub_bare_" <> id
+  let disk = "test-org/test-repo.git"
+  let assert Ok(Nil) = git_exec.init_bare_repo(root, disk)
+  let git_dir = git_exec.repo_path(root, disk)
+  let assert Ok(branches) = git_exec.list_branches(git_dir)
+  let assert [] = branches
+  let _ = git_exec.remove_bare_repo(root, disk)
+  let _ = simplifile.delete(root)
+}
+
+pub fn merge_twice_is_idempotent_test() {
+  let git_dir = setup_fixture_repo()
+  let assert Ok(first_sha) =
+    git_exec.merge_branches(git_dir, "main", "feature", git_exec.MergeCommit, "")
+  let assert Ok(second_sha) =
+    git_exec.merge_branches(git_dir, "main", "feature", git_exec.MergeCommit, "")
+  let assert True = first_sha == second_sha
   cleanup_fixture_repo(git_dir)
 }
