@@ -1,4 +1,4 @@
-\restrict bMM9bAwQRtmJ4dbORO5NbMQ7hNJdDRFq06eVWL1OnRj0YeIedXuFRs2gsLvuwni
+\restrict 3HKjAM6Cu0NlD7VmaXyBicQufploNxg3lEqrC1jxUpo4omgj4e9nOlxbLnjvNVV
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 18.3
@@ -18,17 +18,6 @@ SET row_security = off;
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
-
---
--- Name: items; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.items (
-    id character varying(64) NOT NULL,
-    title character varying(255) NOT NULL,
-    status character varying(255) NOT NULL
-);
-
 
 --
 -- Name: merge_request_comments; Type: TABLE; Schema: public; Owner: -
@@ -152,14 +141,6 @@ CREATE TABLE public.users (
     email character varying(255),
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
-
-
---
--- Name: items items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.items
-    ADD CONSTRAINT items_pkey PRIMARY KEY (id);
 
 
 --
@@ -407,7 +388,7 @@ ALTER TABLE ONLY public.ssh_public_keys
 -- PostgreSQL database dump complete
 --
 
-\unrestrict bMM9bAwQRtmJ4dbORO5NbMQ7hNJdDRFq06eVWL1OnRj0YeIedXuFRs2gsLvuwni
+\unrestrict 3HKjAM6Cu0NlD7VmaXyBicQufploNxg3lEqrC1jxUpo4omgj4e9nOlxbLnjvNVV
 
 
 --
@@ -415,7 +396,6 @@ ALTER TABLE ONLY public.ssh_public_keys
 --
 
 INSERT INTO public.schema_migrations (version) VALUES
-    ('20240511203036'),
     ('20260527120000'),
     ('20260528120000'),
     ('20260529120000');

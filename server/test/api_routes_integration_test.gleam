@@ -111,6 +111,45 @@ pub fn api_create_org_invalid_slug_test() {
   })
 }
 
+pub fn api_create_repo_underscore_name_test() {
+  db_test_support.with_db(fn(db) {
+    let root = route_test_support.repos_root()
+    let #(ctx, sign) = route_test_support.authenticated(db, root)
+    let token = route_test_support.bearer_token(sign, "user_1")
+    let _ =
+      route_test_support.dispatch(
+        route_test_support.post_json(
+          "/api/orgs",
+          token,
+          json.object([
+            #("slug", json.string("stord")),
+            #("name", json.string("Stord")),
+          ]),
+        ),
+        ctx,
+      )
+
+    let create_repo =
+      route_test_support.dispatch(
+        route_test_support.post_json(
+          "/api/orgs/stord/repos",
+          token,
+          json.object([
+            #("name", json.string("orders_service")),
+            #("description", json.null()),
+          ]),
+        ),
+        ctx,
+      )
+    let assert 201 = route_test_support.status(create_repo)
+    let assert True =
+      route_test_support.contains(create_repo, "\"name\":\"orders_service\"")
+
+    route_test_support.cleanup_repos_root(root)
+    Nil
+  })
+}
+
 pub fn api_org_forbidden_for_non_member_test() {
   db_test_support.with_db(fn(db) {
     let root = route_test_support.repos_root()

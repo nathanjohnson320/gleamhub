@@ -61,6 +61,7 @@ export GLEAMHUB_API_URL
 export GLEAMHUB_USER_ID
 export GLEAMHUB_ORG="$org"
 export GLEAMHUB_REPO="$repo"
+export INTERNAL_API_TOKEN="$INTERNAL_TOKEN"
 
 case "$op" in
   upload-pack) exec git upload-pack "$git_dir" ;;

@@ -203,7 +203,7 @@ pub fn view(model: Model) -> Element(Msg) {
               attr.id("repo-name"),
               attr.class(components.input),
               attr.value(model.name),
-              attr.placeholder("my-app"),
+              attr.placeholder("my_app"),
               event.on_input(NameChanged),
             ]),
           ]),
