@@ -33,6 +33,23 @@ fn hydrate_comments(
   }
 }
 
+fn hydrate_issues(
+  ctx: Context,
+  issues: List(database.IssueRow),
+) -> List(database.IssueRow) {
+  case ctx.clerk {
+    option.Some(client) -> clerk_api.hydrate_issues(client, issues)
+    option.None -> issues
+  }
+}
+
+fn hydrate_issue(ctx: Context, issue: database.IssueRow) -> database.IssueRow {
+  case ctx.clerk {
+    option.Some(client) -> clerk_api.hydrate_issue(client, issue)
+    option.None -> issue
+  }
+}
+
 fn with_repo(
   ctx: Context,
   org_slug: String,
@@ -89,7 +106,10 @@ pub fn list_issues(
     Ok(_) ->
       with_repo(ctx, org_slug, repo_name, fn(_repo) {
         case database.list_issues(ctx.repo(), org_slug, repo_name) {
-          Ok(issues) -> json_ok(json_api.issues_json(issues), 200)
+          Ok(issues) -> {
+            let issues = hydrate_issues(ctx, issues)
+            json_ok(json_api.issues_json(issues), 200)
+          }
           Error(_) -> wisp.internal_server_error()
         }
       })
@@ -132,7 +152,10 @@ pub fn create_issue(
                     user_id(ctx),
                   )
                 {
-                  Ok(issue) -> json_ok(json_api.issue_json(issue), 201)
+                  Ok(issue) -> {
+                    let issue = hydrate_issue(ctx, issue)
+                    json_ok(json_api.issue_json(issue), 201)
+                  }
                   Error(_) -> wisp.internal_server_error()
                 }
               })
@@ -157,6 +180,7 @@ pub fn get_issue_detail(
         Error(r) -> r
         Ok(number) ->
           with_issue(ctx, org_slug, repo_name, number, fn(issue) {
+            let issue = hydrate_issue(ctx, issue)
             json.object([
               #("issue", json_api.issue_json(issue)),
             ])
@@ -195,7 +219,10 @@ pub fn close_issue_route(
               False -> wisp.response(403)
               True ->
                 case database.close_issue(ctx.repo(), org_slug, repo_name, number) {
-                  Ok(updated) -> json_ok(json_api.issue_json(updated), 200)
+                  Ok(updated) -> {
+                    let updated = hydrate_issue(ctx, updated)
+                    json_ok(json_api.issue_json(updated), 200)
+                  }
                   Error(_) -> wisp.internal_server_error()
                 }
             }

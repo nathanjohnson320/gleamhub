@@ -233,6 +233,7 @@ pub fn issue_json(issue: IssueRow) -> json.Json {
     #("title", json.string(issue.title)),
     #("description", optional_string(issue.description)),
     #("author_user_id", json.string(issue.author_user_id)),
+    #("author_name", json.string(issue.author_name)),
     #("state", json.string(issue.state)),
     #("closed_at", optional_string(issue.closed_at)),
     #("created_at", json.string(issue.created_at)),

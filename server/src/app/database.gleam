@@ -67,6 +67,7 @@ pub type IssueRow {
     title: String,
     description: Option(String),
     author_user_id: String,
+    author_name: String,
     state: String,
     closed_at: Option(String),
     created_at: String,
@@ -132,6 +133,13 @@ pub fn issue_comment_with_author_name(
   author_name: String,
 ) -> IssueCommentRow {
   IssueCommentRow(..comment, author_name:)
+}
+
+pub fn issue_with_author_name(
+  issue: IssueRow,
+  author_name: String,
+) -> IssueRow {
+  IssueRow(..issue, author_name:)
 }
 
 pub fn list_orgs_for_user(db: pog.Connection, user_id: String) -> Result(
@@ -864,6 +872,7 @@ fn issue_row(
     title:,
     description:,
     author_user_id:,
+    author_name: author_user_id,
     state:,
     closed_at: optional_timestamp(closed_at),
     created_at:,

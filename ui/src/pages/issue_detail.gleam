@@ -248,7 +248,7 @@ fn conversation_timeline(model: Model, issue: Issue) -> Element(Msg) {
 }
 
 fn opening_post(issue: Issue, has_more: Bool) -> Element(Msg) {
-  let author = author_label(issue.author_user_id)
+  let author = api.issue_author_label(issue)
   timeline_event(
     initials: author_initials(author),
     header: event_header_text(author, "opened this issue", issue.created_at),
@@ -359,17 +359,6 @@ fn comment_form(model: Model) -> Element(Msg) {
       ),
     ]),
   ])
-}
-
-fn author_label(user_id: String) -> String {
-  case string.split(user_id, on: "_") {
-    [prefix, ..] ->
-      case string.trim(prefix) {
-        "" -> user_id
-        trimmed -> trimmed
-      }
-    _ -> user_id
-  }
 }
 
 fn author_initials(author: String) -> String {

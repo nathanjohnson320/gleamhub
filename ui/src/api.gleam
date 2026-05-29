@@ -229,6 +229,7 @@ pub type Issue {
     title: String,
     description: option.Option(String),
     author_user_id: String,
+    author_name: String,
     state: String,
     closed_at: option.Option(String),
     created_at: String,
@@ -330,6 +331,13 @@ pub fn issue_comment_author_label(comment: IssueComment) -> String {
   }
 }
 
+pub fn issue_author_label(issue: Issue) -> String {
+  case string.trim(issue.author_name) {
+    "" -> issue.author_user_id
+    name -> name
+  }
+}
+
 pub fn mr_comment_decoder() -> decode.Decoder(MrComment) {
   use id <- decode.field("id", decode.string)
   use author_user_id <- decode.field("author_user_id", decode.string)
@@ -409,6 +417,7 @@ pub fn issue_decoder() -> decode.Decoder(Issue) {
   use title <- decode.field("title", decode.string)
   use description <- decode.field("description", decode.optional(decode.string))
   use author_user_id <- decode.field("author_user_id", decode.string)
+  use author_name <- decode.field("author_name", decode.string)
   use state <- decode.field("state", decode.string)
   use closed_at <- decode.field("closed_at", decode.optional(decode.string))
   use created_at <- decode.field("created_at", decode.string)
@@ -418,6 +427,7 @@ pub fn issue_decoder() -> decode.Decoder(Issue) {
     title:,
     description:,
     author_user_id:,
+    author_name:,
     state:,
     closed_at:,
     created_at:,
