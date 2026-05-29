@@ -91,8 +91,8 @@ pub fn branches_json_test() {
 
 pub fn tree_json_test() {
   let entries = [
-    TreeEntry(name: "src", entry_type: Tree, sha: "abc"),
-    TreeEntry(name: "README.md", entry_type: Blob, sha: "def"),
+    TreeEntry(name: "src", entry_type: Tree, sha: "abc", last_commit_sha: "", last_commit_message: ""),
+    TreeEntry(name: "README.md", entry_type: Blob, sha: "def", last_commit_sha: "", last_commit_message: ""),
   ]
   let s = json_api.tree_json("main", "", entries) |> json_string
   let assert True = string.contains(s, "\"type\":\"tree\"")
@@ -243,8 +243,8 @@ pub fn readme_json_test() {
 
 pub fn tree_entry_types_json_test() {
   let entries = [
-    TreeEntry(name: "sub", entry_type: Submodule, sha: "1"),
-    TreeEntry(name: "link", entry_type: Symlink, sha: "2"),
+    TreeEntry(name: "sub", entry_type: Submodule, sha: "1", last_commit_sha: "", last_commit_message: ""),
+    TreeEntry(name: "link", entry_type: Symlink, sha: "2", last_commit_sha: "", last_commit_message: ""),
   ]
   let s = json_api.tree_json("main", "lib", entries) |> json_string
   let assert True = string.contains(s, "\"type\":\"submodule\"")

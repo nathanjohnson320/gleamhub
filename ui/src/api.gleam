@@ -33,7 +33,13 @@ pub type RepoDetail {
 }
 
 pub type TreeEntry {
-  TreeEntry(name: String, entry_type: String, sha: String)
+  TreeEntry(
+    name: String,
+    entry_type: String,
+    sha: String,
+    last_commit_sha: String,
+    last_commit_message: String,
+  )
 }
 
 pub type TreeListing {
@@ -138,7 +144,21 @@ pub fn tree_entry_decoder() -> decode.Decoder(TreeEntry) {
   use name <- decode.field("name", decode.string)
   use entry_type <- decode.field("type", decode.string)
   use sha <- decode.field("sha", decode.string)
-  decode.success(TreeEntry(name:, entry_type:, sha:))
+  use last_commit_sha <- decode.field(
+    "last_commit_sha",
+    decode.optional(decode.string),
+  )
+  use last_commit_message <- decode.field(
+    "last_commit_message",
+    decode.optional(decode.string),
+  )
+  decode.success(TreeEntry(
+    name:,
+    entry_type:,
+    sha:,
+    last_commit_sha: option.unwrap(last_commit_sha, ""),
+    last_commit_message: option.unwrap(last_commit_message, ""),
+  ))
 }
 
 pub fn tree_decoder() -> decode.Decoder(TreeListing) {
@@ -295,9 +315,23 @@ pub fn mr_comment_decoder() -> decode.Decoder(MrComment) {
   ))
 }
 
+pub type RepoCommits {
+  RepoCommits(total: Int, commits: List(MrCommit))
+}
+
 pub fn mr_commits_decoder() -> decode.Decoder(List(MrCommit)) {
   use commits <- decode.field("commits", decode.list(mr_commit_decoder()))
   decode.success(commits)
+}
+
+pub fn commit_decoder() -> decode.Decoder(MrCommit) {
+  mr_commit_decoder()
+}
+
+pub fn repo_commits_decoder() -> decode.Decoder(RepoCommits) {
+  use total <- decode.field("total", decode.int)
+  use commits <- decode.field("commits", decode.list(mr_commit_decoder()))
+  decode.success(RepoCommits(total:, commits:))
 }
 
 pub fn mr_commit_decoder() -> decode.Decoder(MrCommit) {

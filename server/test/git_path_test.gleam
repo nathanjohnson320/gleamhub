@@ -37,6 +37,17 @@ pub fn tree_ref_path_test() {
   let assert "main:README.md" = git_path.tree_ref_path("main", "README.md")
 }
 
+pub fn normalize_sha_valid_test() {
+  let assert Ok("abc1234") = git_path.normalize_sha("abc1234")
+  let assert Ok("deadbeef") = git_path.normalize_sha("DEADBEEF")
+}
+
+pub fn normalize_sha_invalid_test() {
+  let assert Error(git_path.InvalidPath) = git_path.normalize_sha("abc")
+  let assert Error(git_path.InvalidPath) = git_path.normalize_sha("not-hex!")
+  let assert Error(git_path.InvalidPath) = git_path.normalize_sha("")
+}
+
 pub fn normalize_branch_valid_test() {
   let assert Ok("main") = git_path.normalize_branch("main")
   let assert Ok("feature/foo") = git_path.normalize_branch("feature/foo")

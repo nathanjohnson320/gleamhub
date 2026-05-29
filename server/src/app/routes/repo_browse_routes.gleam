@@ -1,5 +1,6 @@
 import app/database.{type RepoRow, get_repo}
 import app/git_exec
+import app/git_path
 import app/json_api
 import app/org_access
 import app/web.{type Context}
@@ -132,6 +133,58 @@ pub fn list_repo_branches(
             |> json.to_string
             |> wisp.json_response(200)
           Error(e) -> git_error_response(e)
+        }
+      })
+  }
+}
+
+pub fn get_repo_commit(
+  req: Request,
+  ctx: Context,
+  org_slug: String,
+  name: String,
+) -> Response {
+  use <- wisp.require_method(req, http.Get)
+  case ensure_user(ctx) {
+    Error(r) -> r
+    Ok(_) ->
+      with_repo(ctx, org_slug, name, fn(git_dir, _repo) {
+        case git_path.normalize_sha(query_param(req, "sha")) {
+          Error(_) -> wisp.bad_request("Invalid commit SHA")
+          Ok(sha) ->
+            case git_exec.show_commit(git_dir, sha) {
+              Ok(commit) ->
+                json_api.single_commit_json(commit)
+                |> json.to_string
+                |> wisp.json_response(200)
+              Error(e) -> git_error_response(e)
+            }
+        }
+      })
+  }
+}
+
+pub fn list_repo_commits(
+  req: Request,
+  ctx: Context,
+  org_slug: String,
+  name: String,
+) -> Response {
+  use <- wisp.require_method(req, http.Get)
+  case ensure_user(ctx) {
+    Error(r) -> r
+    Ok(_) ->
+      with_repo(ctx, org_slug, name, fn(git_dir, _repo) {
+        case resolve_ref(git_dir, query_param(req, "ref")) {
+          Error(e) -> git_error_response(e)
+          Ok(ref) ->
+            case git_exec.commit_count(git_dir, ref), git_exec.commits_on_ref(git_dir, ref) {
+              Ok(total), Ok(commits) ->
+                json_api.repo_commits_json(total, commits)
+                |> json.to_string
+                |> wisp.json_response(200)
+              Error(e), _ | _, Error(e) -> git_error_response(e)
+            }
         }
       })
   }

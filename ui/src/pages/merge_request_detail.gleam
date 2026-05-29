@@ -14,7 +14,7 @@ import lustre/attribute as attr
 import lustre/effect.{type Effect, batch, none}
 import lustre/element.{type Element, text, unsafe_raw_html}
 import lustre/element/html.{
-  button, div, form, h2, h3, li, ol, option, p, select, span, textarea, ul,
+  a, button, div, form, h2, h3, li, ol, option, p, select, span, textarea, ul,
 }
 import lustre/event
 import lustre_http
@@ -745,6 +745,7 @@ fn commits_chronological(commits: List(MrCommit)) -> List(MrCommit) {
 }
 
 fn commit_timeline_item(
+  model: Model,
   c: MrCommit,
   is_last: Bool,
   copied: Bool,
@@ -766,9 +767,15 @@ fn commit_timeline_item(
     div([attr.class("min-w-0 flex-1 pt-0.5")], [
       div([attr.class("flex items-start justify-between gap-3")], [
         div([attr.class("min-w-0")], [
-          p([attr.class("text-sm font-semibold leading-snug text-gh-ink")], [
-            text(c.subject),
-          ]),
+          a(
+            [
+              attr.href(routes.commit_tree_path(model.org_slug, model.repo_name, c.sha)),
+              attr.class(
+                "text-sm font-semibold leading-snug text-gh-ink hover:text-gh-accent",
+              ),
+            ],
+            [text(c.subject)],
+          ),
           p([attr.class("mt-1 text-sm text-gh-muted")], [
             span([attr.class("font-medium text-gh-ink")], [text(c.author)]),
             text(" committed " <> time_format.format_commit_time(c.committed_at)),
@@ -823,7 +830,7 @@ fn commits_tab(model: Model) -> Element(Msg) {
           [attr.class("relative list-none px-4 py-5 sm:px-6")],
           list.index_map(chronological, fn(c, index) {
             let copied = model.copied_commit_sha == option.Some(c.sha)
-            commit_timeline_item(c, index == last_index, copied)
+            commit_timeline_item(model, c, index == last_index, copied)
           }),
         ),
       ])

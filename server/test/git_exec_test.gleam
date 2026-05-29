@@ -37,6 +37,10 @@ pub fn browse_fixture_repo_test() {
     })
   let assert True =
     list.any(entries, fn(e) {
+      e.name == "README.md" && e.last_commit_message != ""
+    })
+  let assert True =
+    list.any(entries, fn(e) {
       e.name == "src" && e.entry_type == git_exec.Tree
     })
 
@@ -79,6 +83,14 @@ pub fn merge_request_git_ops_test() {
 
   let assert Ok(commits) = git_exec.commits_between(git_dir, "main", "feature")
   let assert True = list.length(commits) >= 1
+
+  let assert Ok(total) = git_exec.commit_count(git_dir, "main")
+  let assert True = total >= 1
+  let assert Ok(main_commits) = git_exec.commits_on_ref(git_dir, "main")
+  let assert True = list.length(main_commits) >= 1
+  let assert [git_exec.CommitEntry(sha: main_head, ..), ..] = main_commits
+  let assert Ok(head_commit) = git_exec.show_commit(git_dir, main_head)
+  let assert True = head_commit.subject != ""
 
   let assert Ok(files) = git_exec.diff_summary(git_dir, "main", "feature")
   let assert True =

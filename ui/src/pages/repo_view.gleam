@@ -1,7 +1,8 @@
 import api.{
-  type BlobView, type Org, type Readme, type RepoDetail, type TreeEntry,
-  type TreeListing,
+  type BlobView, type MrCommit, type Org, type Readme, type RepoCommits,
+  type RepoDetail, type TreeEntry, type TreeListing,
 }
+import time_format
 import components
 import config.{type Config}
 import gleam/int
@@ -44,6 +45,8 @@ pub type Model {
     protected_input: String,
     saving_protected: Bool,
     clone_copied: Bool,
+    commit_total: option.Option(Int),
+    viewing_commit: option.Option(MrCommit),
     error: option.Option(String),
   )
 }
@@ -54,6 +57,8 @@ pub type Msg {
   LoadedReadme(Result(Readme, lustre_http.HttpError))
   LoadedTree(Result(TreeListing, lustre_http.HttpError))
   LoadedBlob(Result(BlobView, lustre_http.HttpError))
+  CommitsSummaryLoaded(Result(RepoCommits, lustre_http.HttpError))
+  CommitLoaded(Result(MrCommit, lustre_http.HttpError))
   BranchChanged(String)
   CopyCloneUrl
   OrgLoaded(Result(Org, lustre_http.HttpError))
@@ -89,14 +94,28 @@ pub fn init(
     protected_input: "",
     saving_protected: False,
     clone_copied: False,
+    commit_total: option.None,
+    viewing_commit: option.None,
     error: option.None,
   )
 }
 
 pub fn on_load(config: Config, model: Model) -> Effect(Msg) {
   case model.mode {
-    Blob -> effect.batch([load_blob(config, model), load_branches(config, model)])
-    Tree -> effect.batch([load_tree(config, model), load_branches(config, model)])
+    Blob ->
+      effect.batch([
+        load_blob(config, model),
+        load_branches(config, model),
+        load_commit(config, model),
+        load_commits_summary(config, model),
+      ])
+    Tree ->
+      effect.batch([
+        load_tree(config, model),
+        load_branches(config, model),
+        load_commit(config, model),
+        load_commits_summary(config, model),
+      ])
     Home ->
       effect.batch([
         load_detail(config, model),
@@ -106,13 +125,48 @@ pub fn on_load(config: Config, model: Model) -> Effect(Msg) {
   }
 }
 
+fn load_commits_summary(config: Config, model: Model) -> Effect(Msg) {
+  case model.ref {
+    "" -> effect.none()
+    ref ->
+      case routes.is_commit_ref(ref) {
+        True -> effect.none()
+        False ->
+          lustre_http.get(
+            config,
+            api_base(config, model) <> "/commits?ref=" <> uri.percent_encode(ref),
+            lustre_http.expect_json(api.repo_commits_decoder(), CommitsSummaryLoaded),
+          )
+      }
+  }
+}
+
+fn load_commit(config: Config, model: Model) -> Effect(Msg) {
+  case routes.is_commit_ref(model.ref) {
+    True ->
+      lustre_http.get(
+        config,
+        api_base(config, model) <> "/commit?sha=" <> uri.percent_encode(model.ref),
+        lustre_http.expect_json(api.commit_decoder(), CommitLoaded),
+      )
+    False -> effect.none()
+  }
+}
+
 fn home_content_effects(config: Config, model: Model) -> Effect(Msg) {
   case model.mode, model.ref {
     Home, ref if ref != "" ->
       effect.batch([
         load_readme(config, model),
         load_tree(config, model),
+        load_commits_summary(config, model),
       ])
+    Tree, ref if ref != "" ->
+      effect.batch([
+        load_tree(config, model),
+        load_commits_summary(config, model),
+      ])
+    Blob, ref if ref != "" -> load_commits_summary(config, model)
     _, _ -> effect.none()
   }
 }
@@ -297,6 +351,22 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
       Model(..model, error: option.Some("Could not load file"), loading: False),
       effect.none(),
     )
+    CommitsSummaryLoaded(Ok(data)) -> #(
+      Model(..model, commit_total: option.Some(data.total)),
+      effect.none(),
+    )
+    CommitsSummaryLoaded(Error(_)) -> #(
+      Model(..model, commit_total: option.None),
+      effect.none(),
+    )
+    CommitLoaded(Ok(commit)) -> #(
+      Model(..model, viewing_commit: option.Some(commit)),
+      effect.none(),
+    )
+    CommitLoaded(Error(_)) -> #(
+      Model(..model, viewing_commit: option.None),
+      effect.none(),
+    )
     CopyCloneUrl -> {
       let url = case model.detail {
         option.Some(d) -> d.clone_url
@@ -305,10 +375,11 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
       let _ = clipboard.copy(url)
       #(Model(..model, clone_copied: True), effect.none())
     }
+    BranchChanged("") -> #(model, effect.none())
     BranchChanged(new_ref) -> {
       case model.mode {
         Home -> #(
-          Model(..model, ref: new_ref, loading: True),
+          Model(..model, ref: new_ref, loading: True, commit_total: option.None),
           on_load(config, Model(..model, ref: new_ref)),
         )
         _ -> #(
@@ -441,15 +512,55 @@ fn file_row(model: Model, entry: TreeEntry) -> Element(Msg) {
       routes.repo_blob_path(model.org_slug, model.repo_name, model.ref, file_path)
     }
   }
+  let commit_cell = case entry.last_commit_message {
+    "" -> td([attr.class("repo-file-commit text-sm text-gh-muted")], [text("—")])
+    _ -> {
+      let commit_sha_cell = case entry.last_commit_sha {
+        "" ->
+          span([attr.class("text-sm text-gh-muted truncate")], [
+            text(entry.last_commit_message),
+          ])
+        sha ->
+          a(
+            [
+              attr.href(routes.commit_tree_path(model.org_slug, model.repo_name, sha)),
+              attr.class("text-sm text-gh-muted hover:text-gh-accent"),
+              attr.title(entry.last_commit_message),
+            ],
+            [text(entry.last_commit_message)],
+          )
+      }
+      td([attr.class("repo-file-commit max-w-md")], [commit_sha_cell])
+    }
+  }
+  let sha_display = case entry.last_commit_sha {
+    "" -> string.slice(entry.sha, 0, 7)
+    sha -> string.slice(sha, 0, 7)
+  }
+  let sha_cell = case entry.last_commit_sha {
+    "" ->
+      td([attr.class("repo-file-meta text-right font-mono text-xs text-gh-muted")], [
+        text(sha_display),
+      ])
+    sha ->
+      td([attr.class("repo-file-meta text-right font-mono text-xs")], [
+        a(
+          [
+            attr.href(routes.commit_tree_path(model.org_slug, model.repo_name, sha)),
+            attr.class("text-gh-muted hover:text-gh-accent"),
+          ],
+          [text(sha_display)],
+        ),
+      ])
+  }
   tr([attr.class("repo-file-row")], [
     td([attr.class("repo-file-name")], [
       a([attr.href(href), attr.class("text-gh-accent hover:underline")], [
         text(entry_icon(entry.entry_type) <> " " <> entry.name),
       ]),
     ]),
-    td([attr.class("repo-file-meta text-right font-mono text-xs text-gh-muted")], [
-      text(string.slice(entry.sha, 0, 7)),
-    ]),
+    commit_cell,
+    sha_cell,
   ])
 }
 
@@ -464,6 +575,9 @@ fn file_table(model: Model) -> Element(Msg) {
             thead([], [
               tr([], [
                 th([attr.class("text-left text-sm text-gh-muted")], [text("Name")]),
+                th([attr.class("text-left text-sm text-gh-muted")], [
+                  text("Last commit"),
+                ]),
                 th([attr.class("text-right text-sm text-gh-muted")], [
                   text("SHA"),
                 ]),
@@ -547,6 +661,10 @@ fn path_breadcrumb(model: Model) -> Element(Msg) {
   ])
 }
 
+fn short_sha(sha: String) -> String {
+  string.slice(sha, 0, 7)
+}
+
 fn branch_select(model: Model) -> Element(Msg) {
   select(
     [
@@ -563,6 +681,62 @@ fn branch_select(model: Model) -> Element(Msg) {
       )
     }),
   )
+}
+
+fn ref_selector(model: Model) -> Element(Msg) {
+  case routes.is_commit_ref(model.ref) {
+    False ->
+      div([attr.class("flex items-center gap-2")], [
+        span([attr.class("text-sm font-medium text-gh-muted")], [text("Branch")]),
+        branch_select(model),
+      ])
+    True ->
+      div([attr.class("flex flex-wrap items-center gap-2")], [
+        span([attr.class("text-sm font-medium text-gh-muted")], [text("Commit")]),
+        code(
+          [
+            attr.class(
+              "rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-xs text-gh-ink",
+            ),
+          ],
+          [text(short_sha(model.ref))],
+        ),
+        select(
+          [
+            attr.class(components.input <> " !w-auto !min-w-[8rem] !py-1.5"),
+            event.on_change(BranchChanged),
+          ],
+          list.append(
+            [option([attr.value(""), attr.selected(False)], "Switch to branch…")],
+            list.map(model.branches, fn(branch) {
+              option([attr.value(branch)], branch)
+            }),
+          ),
+        ),
+      ])
+  }
+}
+
+fn commit_snapshot_banner(model: Model) -> Element(Msg) {
+  case model.viewing_commit {
+    option.None -> text("")
+    option.Some(c) ->
+      div([attr.class(components.card <> " mb-4")], [
+        p([attr.class("text-xs font-semibold uppercase tracking-wide text-gh-muted")], [
+          text("Snapshot at this commit"),
+        ]),
+        h3([attr.class("mt-1 text-lg font-semibold text-gh-ink")], [text(c.subject)]),
+        p([attr.class("mt-1 text-sm text-gh-muted")], [
+          span([attr.class("font-medium text-gh-ink")], [text(c.author)]),
+          text(" committed " <> time_format.format_commit_time(c.committed_at)),
+          text(" · "),
+          code([attr.class("font-mono text-xs")], [text(short_sha(c.sha))]),
+        ]),
+        p([attr.class("mt-2 text-sm text-gh-muted")], [
+          text("Browse files and folders as they were at this point in history."),
+        ]),
+      ])
+  }
 }
 
 fn protected_branches_card(model: Model) -> Element(Msg) {
@@ -689,17 +863,47 @@ fn clone_url_block(url: String, copied: Bool) -> Element(Msg) {
   ])
 }
 
+fn commit_count_link(model: Model) -> Element(Msg) {
+  case routes.is_commit_ref(model.ref) {
+    True -> text("")
+    False -> commit_count_link_for_branch(model)
+  }
+}
+
+fn commit_count_link_for_branch(model: Model) -> Element(Msg) {
+  case model.commit_total {
+    option.None | option.Some(0) -> text("")
+    option.Some(total) ->
+      case model.ref {
+        "" -> text("")
+        branch -> {
+          let label = case total {
+            1 -> "1 commit"
+            n -> int.to_string(n) <> " commits"
+          }
+          a(
+            [
+              attr.href(routes.commits_path(model.org_slug, model.repo_name, branch)),
+              attr.class("text-sm font-medium text-gh-accent hover:underline"),
+            ],
+            [text(label)],
+          )
+        }
+      }
+  }
+}
+
 fn toolbar(model: Model) -> Element(Msg) {
   div(
     [
       attr.class(
-        "repo-toolbar mb-4 flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm ring-1 ring-slate-900/5 sm:flex-row sm:items-center",
+        "repo-toolbar mb-4 flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm ring-1 ring-slate-900/5 sm:flex-row sm:items-center sm:justify-between",
       ),
     ],
     [
-      div([attr.class("flex items-center gap-2")], [
-        span([attr.class("text-sm font-medium text-gh-muted")], [text("Branch")]),
-        branch_select(model),
+      div([attr.class("flex flex-wrap items-center gap-3")], [
+        ref_selector(model),
+        commit_count_link(model),
       ]),
       path_breadcrumb(model),
     ],
@@ -747,9 +951,17 @@ pub fn view(model: Model) -> Element(Msg) {
         "This repository is empty. Push commits over SSH to add files.",
       )
     False, Blob ->
-      div([], [toolbar(model), blob_view(model)])
+      div([], [
+        commit_snapshot_banner(model),
+        toolbar(model),
+        blob_view(model),
+      ])
     False, Tree ->
-      div([], [toolbar(model), div([attr.class(components.card)], [file_table(model)])])
+      div([], [
+        commit_snapshot_banner(model),
+        toolbar(model),
+        div([attr.class(components.card)], [file_table(model)]),
+      ])
     False, Home ->
       div([], [
         protected_branches_card(model),

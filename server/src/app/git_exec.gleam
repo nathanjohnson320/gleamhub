@@ -20,7 +20,13 @@ pub type GitError {
 }
 
 pub type TreeEntry {
-  TreeEntry(name: String, entry_type: TreeEntryType, sha: String)
+  TreeEntry(
+    name: String,
+    entry_type: TreeEntryType,
+    sha: String,
+    last_commit_sha: String,
+    last_commit_message: String,
+  )
 }
 
 pub type TreeEntryType {
@@ -234,8 +240,122 @@ pub fn list_tree(
     Ok(norm) -> {
       let tree_path = git_path.tree_ref_path(ref, norm)
       use out <- result.try(run_git(git_dir, ["ls-tree", tree_path]))
-      Ok(parse_ls_tree(out))
+      let entries = parse_ls_tree(out)
+      Ok(attach_last_commits(git_dir, ref, norm, entries))
     }
+  }
+}
+
+fn attach_last_commits(
+  git_dir: String,
+  ref: String,
+  path: String,
+  entries: List(TreeEntry),
+) -> List(TreeEntry) {
+  case entries {
+    [] -> []
+    _ -> {
+      let log_path = case path {
+        "" -> "."
+        _ -> path
+      }
+      case run_git(git_dir, [
+        "log",
+        "--format=COMMIT:%H%x09%s",
+        "--name-only",
+        "-n",
+        "500",
+        ref,
+        "--",
+        log_path,
+      ]) {
+        Ok(out) -> assign_last_commits(path, entries, parse_log_name_only(out))
+        Error(_) -> entries
+      }
+    }
+  }
+}
+
+fn entry_full_path(base: String, name: String) -> String {
+  case base {
+    "" -> name
+    _ -> base <> "/" <> name
+  }
+}
+
+fn assign_last_commits(
+  base_path: String,
+  entries: List(TreeEntry),
+  commits: List(#(CommitEntry, List(String))),
+) -> List(TreeEntry) {
+  let paths =
+    list.map(entries, fn(e) { entry_full_path(base_path, e.name) })
+  let assignments: List(#(String, CommitEntry)) =
+    list.fold(commits, [], fn(acc: List(#(String, CommitEntry)), commit_files) {
+      let #(commit, files) = commit_files
+      list.fold(files, acc, fn(inner, file) {
+        list.fold(paths, inner, fn(inner2: List(#(String, CommitEntry)), entry_path) {
+          case list.find(inner2, fn(pair: #(String, CommitEntry)) {
+            pair.0 == entry_path
+          }) {
+            Ok(_) -> inner2
+            Error(_) ->
+              case path_matches_entry(file, entry_path) {
+                True -> [#(entry_path, commit), ..inner2]
+                False -> inner2
+              }
+          }
+        })
+      })
+    })
+  list.map(entries, fn(entry) {
+    let full = entry_full_path(base_path, entry.name)
+    case list.find(assignments, fn(pair: #(String, CommitEntry)) {
+      pair.0 == full
+    }) {
+      Ok(#(_, commit)) ->
+        TreeEntry(
+          ..entry,
+          last_commit_sha: commit.sha,
+          last_commit_message: commit.subject,
+        )
+      Error(_) -> entry
+    }
+  })
+}
+
+fn path_matches_entry(changed_file: String, entry_path: String) -> Bool {
+  changed_file == entry_path
+  || string.starts_with(changed_file, entry_path <> "/")
+}
+
+fn parse_log_name_only(output: String) -> List(#(CommitEntry, List(String))) {
+  output
+  |> string.split(on: "\n")
+  |> list.fold([], fn(acc, line) { parse_log_name_only_line(line, acc) })
+}
+
+fn parse_log_name_only_line(
+  line: String,
+  acc: List(#(CommitEntry, List(String))),
+) -> List(#(CommitEntry, List(String))) {
+  case string.trim(line) {
+    "" -> acc
+    trimmed ->
+      case string.starts_with(trimmed, "COMMIT:") {
+        True -> {
+          let rest = string.drop_start(trimmed, 7)
+          case string.split(rest, on: "\t") {
+            [sha, subject] -> [#(CommitEntry(sha:, subject:, author: "", committed_at: ""), []), ..acc]
+            _ -> acc
+          }
+        }
+        False ->
+          case acc {
+            [#(commit, files), ..rest] -> [#(commit, [trimmed, ..files]), ..rest]
+            [] -> acc
+          }
+      }
   }
 }
 
@@ -265,7 +385,13 @@ fn parse_ls_tree_line(line: String) -> Result(TreeEntry, Nil) {
             "link" -> Symlink
             _ -> Blob
           }
-          Ok(TreeEntry(name:, entry_type:, sha:))
+          Ok(TreeEntry(
+            name:,
+            entry_type:,
+            sha:,
+            last_commit_sha: "",
+            last_commit_message: "",
+          ))
         }
         _ -> Error(Nil)
       }
@@ -351,6 +477,48 @@ pub fn merge_base(
   use source <- result.try(branch_ref(git_dir, source_branch))
   use base <- result.try(run_git(git_dir, ["merge-base", target, source]))
   Ok(string.trim(base))
+}
+
+pub const max_commits_list = 100
+
+pub fn commit_count(git_dir: String, ref: String) -> Result(Int, GitError) {
+  use out <- result.try(run_git(git_dir, ["rev-list", "--count", ref]))
+  case int.parse(string.trim(out)) {
+    Ok(n) -> Ok(n)
+    Error(_) -> Error(GitCommandFailed("Invalid commit count"))
+  }
+}
+
+pub fn show_commit(git_dir: String, sha: String) -> Result(CommitEntry, GitError) {
+  case git_path.normalize_sha(sha) {
+    Error(_) -> Error(InvalidPath)
+    Ok(normalized) -> {
+      use out <- result.try(run_git(git_dir, [
+        "log",
+        "-1",
+        "--format=%H%x09%s%x09%an%x09%at",
+        normalized,
+      ]))
+      case parse_commits(out) {
+        [commit, ..] -> Ok(commit)
+        [] -> Error(NotFound)
+      }
+    }
+  }
+}
+
+pub fn commits_on_ref(
+  git_dir: String,
+  ref: String,
+) -> Result(List(CommitEntry), GitError) {
+  use out <- result.try(run_git(git_dir, [
+    "log",
+    "--format=%H%x09%s%x09%an%x09%at",
+    "-n",
+    int.to_string(max_commits_list),
+    ref,
+  ]))
+  Ok(parse_commits(out))
 }
 
 pub fn commits_between(

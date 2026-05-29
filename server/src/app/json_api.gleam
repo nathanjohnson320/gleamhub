@@ -149,6 +149,8 @@ pub fn tree_json(ref: String, path: String, entries: List(TreeEntry)) -> json.Js
           #("name", json.string(entry.name)),
           #("type", tree_entry_type_json(entry.entry_type)),
           #("sha", json.string(entry.sha)),
+          #("last_commit_sha", json.string(entry.last_commit_sha)),
+          #("last_commit_message", json.string(entry.last_commit_message)),
         ])
       }),
     ),
@@ -225,19 +227,29 @@ pub fn merge_request_comments_json(
   ])
 }
 
+fn commit_entry_json(c: CommitEntry) -> json.Json {
+  json.object([
+    #("sha", json.string(c.sha)),
+    #("subject", json.string(c.subject)),
+    #("author", json.string(c.author)),
+    #("committed_at", json.string(c.committed_at)),
+  ])
+}
+
 pub fn commits_json(commits: List(CommitEntry)) -> json.Json {
   json.object([
-    #(
-      "commits",
-      json.array(commits, of: fn(c) {
-        json.object([
-          #("sha", json.string(c.sha)),
-          #("subject", json.string(c.subject)),
-          #("author", json.string(c.author)),
-          #("committed_at", json.string(c.committed_at)),
-        ])
-      }),
-    ),
+    #("commits", json.array(commits, of: commit_entry_json)),
+  ])
+}
+
+pub fn single_commit_json(commit: CommitEntry) -> json.Json {
+  commit_entry_json(commit)
+}
+
+pub fn repo_commits_json(total: Int, commits: List(CommitEntry)) -> json.Json {
+  json.object([
+    #("total", json.int(total)),
+    #("commits", json.array(commits, of: commit_entry_json)),
   ])
 }
 

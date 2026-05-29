@@ -13,14 +13,15 @@ import lustre/event
 import blob_lines
 import modem
 import pages/keys
+import pages/commits
 import pages/merge_request_detail
 import pages/merge_requests
 import pages/org_repos
 import pages/orgs
 import pages/repo_view
 import routes.{
-  type Route, Blob, Keys, MrDetail, MrList, MrNew, NotFound, OrgRepos, Orgs,
-  RepoMissingOrg, RepoView, from_uri, keys_path,
+  type Route, Blob, CommitsList, Keys, MrDetail, MrList, MrNew, NotFound, OrgRepos,
+  Orgs, RepoMissingOrg, RepoView, from_uri, keys_path,
 }
 
 pub fn main(
@@ -46,6 +47,7 @@ type Model {
     repo_view: option.Option(repo_view.Model),
     mr: option.Option(merge_requests.Model),
     mr_detail: option.Option(merge_request_detail.Model),
+    commits: option.Option(commits.Model),
     keys: keys.Model,
     user_menu_open: Bool,
   )
@@ -62,6 +64,7 @@ pub type Msg {
   RepoViewMsg(repo_view.Msg)
   MrMsg(merge_requests.Msg)
   MrDetailMsg(merge_request_detail.Msg)
+  CommitsMsg(commits.Msg)
   KeysMsg(keys.Msg)
   ClerkSessionUpdated(String)
   OpenAccount
@@ -89,6 +92,7 @@ fn init(flags: Flags) -> #(Model, Effect(Msg)) {
       repo_view: repo_view_model(route),
       mr: mr_model(route),
       mr_detail: mr_detail_model(route),
+      commits: commits_model(route),
       keys: keys.init(),
       user_menu_open: False,
     ),
@@ -161,6 +165,13 @@ fn mr_detail_model(route: Route) -> option.Option(merge_request_detail.Model) {
   }
 }
 
+fn commits_model(route: Route) -> option.Option(commits.Model) {
+  case route {
+    CommitsList(org, repo, ref) -> option.Some(commits.init(org, repo, ref))
+    _ -> option.None
+  }
+}
+
 fn route_effect(config: config.Config, route: Route) -> Effect(Msg) {
   case route {
     Orgs -> effect.map(orgs.on_load(config), OrgsMsg)
@@ -179,6 +190,11 @@ fn route_effect(config: config.Config, route: Route) -> Effect(Msg) {
       case mr_detail_model(route) {
         option.Some(m) ->
           effect.map(merge_request_detail.on_load(config, m), MrDetailMsg)
+        option.None -> effect.none()
+      }
+    CommitsList(_, _, _) ->
+      case commits_model(route) {
+        option.Some(m) -> effect.map(commits.on_load(config, m), CommitsMsg)
         option.None -> effect.none()
       }
     Keys -> effect.map(keys.on_load(config), KeysMsg)
@@ -208,6 +224,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
             repo_view: repo_view_model(route),
             mr: mr_model(route),
             mr_detail: mr_detail_model(route),
+            commits: commits_model(route),
             user_menu_open: False,
           ),
           route_effect(model.config, route),
@@ -258,6 +275,18 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           #(
             Model(..model, mr_detail: option.Some(mrd)),
             effect.map(eff, MrDetailMsg),
+          )
+        }
+        option.None -> #(model, effect.none())
+      }
+    }
+    CommitsMsg(m) -> {
+      case model.commits {
+        option.Some(c) -> {
+          let #(c, eff) = commits.update(m, c, model.config)
+          #(
+            Model(..model, commits: option.Some(c)),
+            effect.map(eff, CommitsMsg),
           )
         }
         option.None -> #(model, effect.none())
@@ -431,6 +460,15 @@ fn view(model: Model) -> Element(Msg) {
         option.None ->
           div([attr.class(components.page)], [
             components.empty_state("Loading merge request…"),
+          ])
+      }
+    }
+    CommitsList(_, _, _) -> {
+      case model.commits {
+        option.Some(c) -> commits.view(c) |> map(CommitsMsg)
+        option.None ->
+          div([attr.class(components.page)], [
+            components.empty_state("Loading commits…"),
           ])
       }
     }

@@ -123,6 +123,10 @@ pub fn handle_request(req: Request, ctx: Context) -> Response {
               repo_browse_routes.list_repo_branches(req, ctx, slug, name)
             ["api", "orgs", slug, "repos", name, "readme"] ->
               repo_browse_routes.get_repo_readme(req, ctx, slug, name)
+            ["api", "orgs", slug, "repos", name, "commits"] ->
+              repo_browse_routes.list_repo_commits(req, ctx, slug, name)
+            ["api", "orgs", slug, "repos", name, "commit"] ->
+              repo_browse_routes.get_repo_commit(req, ctx, slug, name)
             ["api", "orgs", slug, "repos", name, "protected-branches"] -> {
               case req.method {
                 http.Get ->

@@ -47,6 +47,24 @@ pub fn tree_ref_path(ref: String, path: String) -> String {
   }
 }
 
+/// Git object id: 7–40 hexadecimal characters (short or full SHA).
+pub fn normalize_sha(sha: String) -> Result(String, PathError) {
+  let trimmed = string.lowercase(string.trim(sha))
+  let len = string.length(trimmed)
+  case len >= 7 && len <= 40 && is_hex(trimmed) {
+    True -> Ok(trimmed)
+    False -> Error(InvalidPath)
+  }
+}
+
+fn is_hex(s: String) -> Bool {
+  s
+  |> string.to_graphemes
+  |> list.all(fn(c) {
+    string.contains("0123456789abcdef", c)
+  })
+}
+
 /// Branch names must be a single ref segment (no `/..` or absolute paths).
 pub fn normalize_branch(name: String) -> Result(String, PathError) {
   let trimmed = string.trim(name)
