@@ -3,7 +3,9 @@
 
 services:
   dagger-engine:
-    image: registry.dagger.io/engine:v0.20.8
+    # Stable name for Dagger CLI (container:// must match `docker ps`, not the compose service name).
+    container_name: gleamhub-dagger-engine
+    image: registry.dagger.io/engine:v0.21.3
     privileged: true
     volumes:
       - dagger-engine-data:/var/lib/dagger
@@ -18,9 +20,10 @@ services:
       GLEAMHUB_API_URL: ${GLEAMHUB_API_URL:-http://host.docker.internal:9999}
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
       GIT_REPOS_ROOT: /data/repos
-      _EXPERIMENTAL_DAGGER_RUNNER_HOST: container://dagger-engine
+      _EXPERIMENTAL_DAGGER_RUNNER_HOST: container://gleamhub-dagger-engine
       CI_POLL_SECONDS: ${CI_POLL_SECONDS:-5}
-      CI_JOB_TIMEOUT_SECONDS: ${CI_JOB_TIMEOUT_SECONDS:-1800}
+      CI_LOG_PATCH_SECONDS: ${CI_LOG_PATCH_SECONDS:-3}
+      CI_JOB_TIMEOUT_SECONDS: ${CI_JOB_TIMEOUT_SECONDS:-900}
     volumes:
       - ./server/data/repos:/data/repos:ro
       - /var/run/docker.sock:/var/run/docker.sock

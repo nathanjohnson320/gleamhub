@@ -51,11 +51,16 @@ pub fn enqueue_for_merge_request_at_sha(
   commit_sha: String,
   trigger: String,
 ) -> Result(database.PipelineRunRow, pog.QueryError) {
-  case database.pipeline_run_exists_for_sha(db, merge_request_id, commit_sha) {
-    Ok(True) -> database.get_latest_pipeline_run(db, merge_request_id)
-    Ok(False) ->
+  case trigger {
+    "manual" ->
       insert_run(db, repository_id, merge_request_id, git_dir, commit_sha, trigger)
-    Error(e) -> Error(e)
+    _ ->
+      case database.pipeline_run_exists_for_sha(db, merge_request_id, commit_sha) {
+        Ok(True) -> database.get_latest_pipeline_run(db, merge_request_id)
+        Ok(False) ->
+          insert_run(db, repository_id, merge_request_id, git_dir, commit_sha, trigger)
+        Error(e) -> Error(e)
+      }
   }
 }
 

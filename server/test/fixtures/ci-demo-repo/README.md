@@ -21,7 +21,7 @@ dagger call -m ./ci ci --source=.
 When an open merge request's source branch is pushed, gleamhub enqueues a pipeline run and the CI worker executes:
 
 ```bash
-dagger call -m <worktree>/<module_path> ci --source=<worktree>
+dagger call -m <checkout>/<module_path> ci --source=<checkout>
 ```
 
 See [docs/ci-platform.md](../../../docs/ci-platform.md) for the full platform contract.

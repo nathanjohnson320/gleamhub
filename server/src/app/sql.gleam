@@ -2261,6 +2261,57 @@ RETURNING
   |> pog.execute(db)
 }
 
+/// Runs the `pipeline_run_reclaim_stale_queued` query
+/// defined in `./src/app/sql/pipeline_run_reclaim_stale_queued.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn pipeline_run_reclaim_stale_queued(
+  db: pog.Connection,
+) -> Result(pog.Returned(Nil), pog.QueryError) {
+  let decoder = decode.map(decode.dynamic, fn(_) { Nil })
+
+  "UPDATE pipeline_runs
+SET
+  state = 'failure',
+  finished_at = now(),
+  log_text = 'No CI worker claimed this job'
+WHERE state = 'queued'
+  AND created_at < now() - interval '10 minutes';
+"
+  |> pog.query
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// Runs the `pipeline_run_reclaim_stale_running` query
+/// defined in `./src/app/sql/pipeline_run_reclaim_stale_running.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn pipeline_run_reclaim_stale_running(
+  db: pog.Connection,
+) -> Result(pog.Returned(Nil), pog.QueryError) {
+  let decoder = decode.map(decode.dynamic, fn(_) { Nil })
+
+  "UPDATE pipeline_runs
+SET
+  state = 'failure',
+  finished_at = now(),
+  log_text = CASE
+    WHEN COALESCE(log_text, '') = '' THEN 'CI job timed out or worker stopped'
+    ELSE log_text
+  END
+WHERE state = 'running'
+  AND started_at < now() - interval '5 minutes';
+"
+  |> pog.query
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
 /// A row you get from running the `pipeline_run_update` query
 /// defined in `./src/app/sql/pipeline_run_update.sql`.
 ///

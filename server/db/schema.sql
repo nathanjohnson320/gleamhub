@@ -1,4 +1,4 @@
-\restrict ipThqRD0DZka9dzV6qZZo6e4Tsllh9qFireJnnhTGqhEwhrF51m5qDopLesHocY
+\restrict SLvTED5abWbHP85cjMQ3UrX1q5XHiYeaj6Malsc10nG09L2yaZHtHribKa7pDEp
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 18.3
@@ -48,6 +48,17 @@ CREATE TABLE public.issues (
     closed_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.items (
+    id character varying(64) NOT NULL,
+    title character varying(255) NOT NULL,
+    status character varying(255) NOT NULL
 );
 
 
@@ -217,6 +228,14 @@ ALTER TABLE ONLY public.issues
 
 ALTER TABLE ONLY public.issues
     ADD CONSTRAINT issues_repository_id_number_key UNIQUE (repository_id, number);
+
+
+--
+-- Name: items items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.items
+    ADD CONSTRAINT items_pkey PRIMARY KEY (id);
 
 
 --
@@ -555,7 +574,7 @@ ALTER TABLE ONLY public.ssh_public_keys
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ipThqRD0DZka9dzV6qZZo6e4Tsllh9qFireJnnhTGqhEwhrF51m5qDopLesHocY
+\unrestrict SLvTED5abWbHP85cjMQ3UrX1q5XHiYeaj6Malsc10nG09L2yaZHtHribKa7pDEp
 
 
 --
@@ -563,6 +582,7 @@ ALTER TABLE ONLY public.ssh_public_keys
 --
 
 INSERT INTO public.schema_migrations (version) VALUES
+    ('20240511203036'),
     ('20260527120000'),
     ('20260528120000'),
     ('20260529120000'),

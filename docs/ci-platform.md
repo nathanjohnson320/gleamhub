@@ -22,7 +22,7 @@ From your repository root:
 dagger call -m ./ci ci --source=.
 ```
 
-Use the same command gleamhub's worker runs in CI.
+Use the same command gleamhub's worker runs in CI. Pin the Gleam container image in your module to the version in the repo’s `.tool-versions` or `gleam.toml` — using a newer compiler than the project expects produces version-constraint errors during `gleam deps download` / `gleam test`.
 
 ### Example fixture
 
@@ -62,8 +62,10 @@ docker compose -f docker-compose.ci.yml up --build -d
 
 Services:
 
-- **`dagger-engine`** — persistent Dagger engine (`/var/lib/dagger` volume)
-- **`ci-worker`** — polls gleamhub, runs `dagger call` against git worktrees
+- **`dagger-engine`** — persistent Dagger engine (`container_name: gleamhub-dagger-engine`; the worker uses `container://gleamhub-dagger-engine`, not the compose service name)
+- **`ci-worker`** — polls gleamhub, clones the bare repo into `/tmp`, runs `dagger call`, and PATCHes `log` every few seconds while the job runs (shown on the MR **Checks** tab)
+
+**Dagger version:** CLI and engine are pinned together (currently **v0.21.3**) in `ci-worker/Dockerfile` (`DAGGER_VERSION`), `docker-compose.ci.yml` (`registry.dagger.io/engine:…`), and the demo fixture’s `ci/dagger.json` (`engineVersion`). After bumping, rebuild both services: `docker compose -f docker-compose.ci.yml up --build -d`. Each hosted repo should set `engineVersion` in its `dagger.json` to the same tag.
 
 Environment (via `.env` or shell):
 
@@ -73,6 +75,7 @@ Environment (via `.env` or shell):
 | `INTERNAL_API_TOKEN` | Must match gleamhub server token |
 | `GIT_REPOS_ROOT` | Mounted read-only into worker (default `./server/data/repos`) |
 | `CI_POLL_SECONDS` | Worker poll interval (default `5`) |
+| `CI_LOG_PATCH_SECONDS` | How often the worker uploads partial logs while a job runs (default `3`) |
 | `CI_JOB_TIMEOUT_SECONDS` | Max job duration (default `1800`) |
 
 ### 3. Git hooks

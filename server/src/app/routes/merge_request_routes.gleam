@@ -16,6 +16,7 @@ import gleam/list
 import gleam/option
 import gleam/result
 import gleam/string
+import pog
 import wisp.{type Request, type Response}
 
 fn user_id(ctx: Context) -> String {
@@ -92,6 +93,17 @@ fn json_ok(body: json.Json, status: Int) -> Response {
   json.to_string(body) |> wisp.json_response(status)
 }
 
+fn pipeline_can_rerun(db: pog.Connection, merge_request_id: String) -> Bool {
+  case database.get_latest_pipeline_run_optional(db, merge_request_id) {
+    Ok(option.Some(run)) ->
+      case run.state {
+        "running" | "queued" -> False
+        _ -> True
+      }
+    _ -> True
+  }
+}
+
 fn compose_merge_check(
   ctx: Context,
   mr: database.MergeRequestRow,
@@ -111,6 +123,7 @@ fn compose_merge_check(
         ci_discovery.branch_head_sha(git_dir, mr.source_branch)
         |> result.map_error(fn(_) { git_exec.NotFound }),
       )
+      database.reclaim_stale_pipeline_runs(ctx.repo())
       let pipeline =
         case database.get_latest_pipeline_run_optional(ctx.repo(), mr.id) {
           Ok(run) -> run
@@ -127,6 +140,7 @@ fn merge_detail_json(
   mr: database.MergeRequestRow,
   check: git_exec.MergeCheck,
 ) -> Response {
+  database.reclaim_stale_pipeline_runs(ctx.repo())
   let pipeline =
     case database.get_latest_pipeline_run_optional(ctx.repo(), mr.id) {
       Ok(option.Some(run)) -> json_api.pipeline_run_json(run)
@@ -580,21 +594,27 @@ pub fn rerun_checks(
                   Error(_) -> wisp.internal_server_error()
                   Ok(option.Some(mr)) ->
                     case mr.state {
-                      "open" ->
-                        case
-                          ci_pipeline.enqueue_for_merge_request(
-                            ctx.repo(),
-                            repo.id,
-                            mr.id,
-                            git_dir,
-                            mr.source_branch,
-                            "manual",
-                          )
-                        {
-                          Ok(run) ->
-                            json_ok(json_api.pipeline_run_json(run), 200)
-                          Error(_) -> wisp.internal_server_error()
+                      "open" -> {
+                        database.reclaim_stale_pipeline_runs(ctx.repo())
+                        case pipeline_can_rerun(ctx.repo(), mr.id) {
+                          False -> wisp.unprocessable_content()
+                          True ->
+                            case
+                              ci_pipeline.enqueue_for_merge_request(
+                                ctx.repo(),
+                                repo.id,
+                                mr.id,
+                                git_dir,
+                                mr.source_branch,
+                                "manual",
+                              )
+                            {
+                              Ok(run) ->
+                                json_ok(json_api.pipeline_run_json(run), 200)
+                              Error(_) -> wisp.internal_server_error()
+                            }
                         }
+                      }
                       _ -> wisp.unprocessable_content()
                     }
                 }

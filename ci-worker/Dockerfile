@@ -8,8 +8,9 @@ RUN apk add --no-cache \
     docker-cli \
     coreutils
 
-ARG DAGGER_VERSION=0.20.8
-RUN curl -fsSL "https://dl.dagger.io/dagger/install.sh" | BIN_DIR=/usr/local/bin sh \
+ARG DAGGER_VERSION=0.21.3
+RUN curl -fsSL "https://dl.dagger.io/dagger/install.sh" \
+  | DAGGER_VERSION="${DAGGER_VERSION}" BIN_DIR=/usr/local/bin sh \
   && dagger version
 
 WORKDIR /worker

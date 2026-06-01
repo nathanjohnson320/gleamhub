@@ -1,7 +1,7 @@
 import { dag, Container, Directory, object, func } from "@dagger.io/dagger"
 
 @object()
-class DemoCi {
+export class DemoCi {
   @func()
   ci(source: Directory): string {
     return dag
@@ -14,4 +14,3 @@ class DemoCi {
   }
 }
 
-export default DemoCi

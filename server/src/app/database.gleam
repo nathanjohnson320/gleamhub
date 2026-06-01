@@ -633,9 +633,16 @@ pub fn get_latest_pipeline_run_optional(
   |> result.map(option.map(_, pipeline_run_from_latest_row))
 }
 
+pub fn reclaim_stale_pipeline_runs(db: pog.Connection) -> Nil {
+  let _ = sql.pipeline_run_reclaim_stale_running(db)
+  let _ = sql.pipeline_run_reclaim_stale_queued(db)
+  Nil
+}
+
 pub fn claim_next_pipeline_job(
   db: pog.Connection,
 ) -> Result(Option(PipelineRunJobRow), pog.QueryError) {
+  reclaim_stale_pipeline_runs(db)
   sql.pipeline_run_claim_next(db)
   |> result_map_optional_row
   |> result.map(option.map(_, pipeline_run_job_from_claim_row))

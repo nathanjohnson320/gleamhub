@@ -2,6 +2,7 @@ import api.{
   type DiffFile, type MergeCheck, type MergeRequest, type MergeRequestDetail,
   type MrComment, type MrCommit, type Pipeline,
 }
+import ci_log
 import components
 import config.{type Config}
 import gleam/int
@@ -14,7 +15,7 @@ import lustre/attribute as attr
 import lustre/effect.{type Effect, batch, none}
 import lustre/element.{type Element, text, unsafe_raw_html}
 import lustre/element/html.{
-  a, button, div, form, h2, h3, input, label, li, ol, option, p, pre, select, span,
+  a, button, div, form, h2, h3, input, label, li, ol, option, p, select, span,
   textarea, ul,
 }
 import lustre/event
@@ -22,11 +23,15 @@ import lustre_http
 import clipboard
 import markdown
 import diff_view
+import poll
 import routes
 import time_format
 
+const pipeline_poll_ms = 5000
+
 pub type Tab {
   Conversation
+  Checks
   Commits
   Changes
 }
@@ -82,6 +87,7 @@ pub type Msg {
   Closed(Result(MergeRequest, lustre_http.HttpError))
   RerunChecks
   ChecksRerun(Result(api.Pipeline, lustre_http.HttpError))
+  RefreshDetail
 }
 
 pub fn init(org_slug: String, repo_name: String, number: Int) -> Model {
@@ -120,14 +126,36 @@ fn api_base(config: Config, model: Model) -> String {
   <> int.to_string(model.number)
 }
 
+fn load_detail(config: Config, model: Model) -> Effect(Msg) {
+  lustre_http.get(
+    config,
+    api_base(config, model),
+    lustre_http.expect_json(api.merge_request_detail_decoder(), DetailLoaded),
+  )
+}
+
+fn pipeline_poll_effect(model: Model) -> Effect(Msg) {
+  case model.detail {
+    option.Some(detail) ->
+      case pipeline_is_in_progress(detail.pipeline) {
+        True -> poll.after_ms(RefreshDetail, pipeline_poll_ms)
+        False -> none()
+      }
+    option.None -> none()
+  }
+}
+
+fn pipeline_is_in_progress(pipeline: option.Option(Pipeline)) -> Bool {
+  case pipeline {
+    option.Some(run) -> run.state == "running" || run.state == "queued"
+    option.None -> False
+  }
+}
+
 pub fn on_load(config: Config, model: Model) -> Effect(Msg) {
   let base = api_base(config, model)
   batch([
-    lustre_http.get(
-      config,
-      base,
-      lustre_http.expect_json(api.merge_request_detail_decoder(), DetailLoaded),
-    ),
+    load_detail(config, model),
     lustre_http.get(
       config,
       base <> "/comments",
@@ -139,7 +167,7 @@ pub fn on_load(config: Config, model: Model) -> Effect(Msg) {
 fn tab_load(config: Config, model: Model, tab: Tab) -> Effect(Msg) {
   let base = api_base(config, model)
   case tab {
-    Conversation -> none()
+    Conversation | Checks -> none()
     Commits ->
       case model.commits {
         [] ->
@@ -178,8 +206,9 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
   case msg {
     DetailLoaded(Ok(d)) -> #(
       Model(..model, detail: option.Some(d), loading: False, error: option.None),
-      none(),
+      pipeline_poll_effect(Model(..model, detail: option.Some(d))),
     )
+    RefreshDetail -> #(model, load_detail(config, model))
     DetailLoaded(Error(_)) -> #(
       Model(..model, loading: False, error: option.Some("Failed to load merge request")),
       none(),
@@ -216,7 +245,7 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
     TabChanged(tab) -> {
       let commits_loading = tab == Commits && model.commits == []
       let clear_inline = case tab {
-        Conversation | Commits -> True
+        Conversation | Checks | Commits -> True
         Changes -> False
       }
       let model =
@@ -401,16 +430,17 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
         lustre_http.expect_json(api.pipeline_decoder(), ChecksRerun),
       ),
     )
-    ChecksRerun(Ok(pipeline)) -> #(
-      Model(
-        ..model,
-        detail: option.map(model.detail, fn(d) {
-          api.MergeRequestDetail(..d, pipeline: option.Some(pipeline))
-        }),
-        error: option.None,
-      ),
-      none(),
-    )
+    ChecksRerun(Ok(pipeline)) -> {
+      let updated =
+        Model(
+          ..model,
+          detail: option.map(model.detail, fn(d) {
+            api.MergeRequestDetail(..d, pipeline: option.Some(pipeline))
+          }),
+          error: option.None,
+        )
+      #(updated, pipeline_poll_effect(updated))
+    }
     ChecksRerun(Error(_)) -> #(
       Model(..model, error: option.Some("Could not re-run checks")),
       none(),
@@ -466,15 +496,13 @@ fn detail_view(
         p([attr.class("mt-1 text-sm text-gh-muted")], [
           text(mr.source_branch <> " → " <> mr.target_branch <> " · " <> mr.state),
         ]),
-        merge_status_banner(model, mr, detail.merge_check),
-        pipeline_status_banner(detail.pipeline),
-        pipeline_log_panel(detail.pipeline),
+        merge_status_banner(model, mr, detail.merge_check, detail.pipeline),
       ]),
-      action_buttons(model, mr, detail.merge_check),
+      action_buttons(model, mr, detail.merge_check, detail.pipeline),
     ]),
     error,
-    tab_bar(model.tab),
-    tab_content(model, mr),
+    tab_bar(model.tab, detail.pipeline),
+    tab_content(model, detail),
   ])
 }
 
@@ -482,6 +510,7 @@ fn merge_status_banner(
   model: Model,
   mr: MergeRequest,
   check: MergeCheck,
+  pipeline: option.Option(Pipeline),
 ) -> Element(Msg) {
   case mr.state {
     "merged" -> merged_banner(model, mr)
@@ -489,7 +518,7 @@ fn merge_status_banner(
       p([attr.class("mt-2 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700")], [
         text("Closed without merging."),
       ])
-    _ -> merge_check_banner(check)
+    _ -> merge_check_banner(check, pipeline)
   }
 }
 
@@ -516,64 +545,177 @@ fn merged_banner(model: Model, mr: MergeRequest) -> Element(Msg) {
   ])
 }
 
-fn merge_check_banner(check: MergeCheck) -> Element(Msg) {
-  case check.mergeable {
-    True -> text("")
-    False ->
+fn merge_check_banner(
+  check: MergeCheck,
+  pipeline: option.Option(Pipeline),
+) -> Element(Msg) {
+  case check.mergeable, pipeline {
+    True, _ -> text("")
+    False, option.Some(_) ->
+      case is_ci_merge_message(check.message) {
+        True -> text("")
+        False ->
+          p([attr.class("mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900")], [
+            text(check.message),
+          ])
+      }
+    False, option.None ->
       p([attr.class("mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900")], [
         text(check.message),
       ])
   }
 }
 
-fn pipeline_status_banner(pipeline: option.Option(Pipeline)) -> Element(Msg) {
-  case pipeline {
-    option.None -> text("")
-    option.Some(run) ->
-      p([attr.class(pipeline_banner_class(run.state))], [
-        text(pipeline_status_text(run)),
-      ])
+fn is_ci_merge_message(message: String) -> Bool {
+  case message {
+    "Checks running"
+    | "Checks failed"
+    | "Checks stale — push to re-run"
+    | "Checks incomplete"
+    | "CI not configured" -> True
+    _ -> False
   }
 }
 
-fn pipeline_banner_class(state: String) -> String {
-  let base = "mt-2 rounded-lg px-3 py-2 text-sm "
-  case state {
-    "success" -> base <> "bg-emerald-50 text-emerald-900"
-    "failure" -> base <> "bg-red-50 text-red-900"
-    "running" | "queued" -> base <> "bg-sky-50 text-sky-900"
-    "skipped" -> base <> "bg-slate-50 text-slate-700"
-    _ -> base <> "bg-slate-50 text-slate-700"
-  }
-}
-
-fn pipeline_status_text(pipeline: Pipeline) -> String {
-  let module = case pipeline.module_path {
-    option.Some(path) -> " · module " <> path
-    option.None -> ""
-  }
+fn pipeline_status_detail(pipeline: Pipeline) -> String {
   case pipeline.state {
-    "success" -> "Checks passed for " <> short_sha(pipeline.commit_sha) <> module
-    "failure" -> "Checks failed for " <> short_sha(pipeline.commit_sha) <> module
-    "running" -> "Checks running for " <> short_sha(pipeline.commit_sha) <> module
-    "queued" -> "Checks queued for " <> short_sha(pipeline.commit_sha) <> module
-    "skipped" -> "CI not configured at " <> short_sha(pipeline.commit_sha)
-    _ -> "Pipeline " <> pipeline.state <> " · " <> short_sha(pipeline.commit_sha)
+    "running" -> "In progress — running Dagger pipeline…"
+    "queued" -> "Waiting for CI worker…"
+    "success" -> "Completed successfully"
+    "failure" -> "Failed"
+    "skipped" -> "No CI module configured"
+    _ -> pipeline.state
   }
 }
 
-fn pipeline_log_panel(pipeline: option.Option(Pipeline)) -> Element(Msg) {
-  case pipeline {
-    option.None -> text("")
-    option.Some(run) ->
-      case run.log {
-        option.None -> text("")
-        option.Some("") -> text("")
-        option.Some(log) ->
-          pre([attr.class(
-            "mt-2 max-h-64 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100",
-          )], [text(log)])
+fn checks_status_title(state: String) -> String {
+  case state {
+    "success" -> "Passed"
+    "failure" -> "Failed"
+    "running" -> "Running"
+    "queued" -> "Queued"
+    "skipped" -> "Skipped"
+    _ -> state
+  }
+}
+
+/// Colorblind-friendly status disc (blue pass, red fail, light blue running).
+fn checks_status_circle(state: String, size: String, animated: Bool) -> Element(Msg) {
+  let motion = case animated {
+    False -> ""
+    True ->
+      case state {
+        "running" | "queued" -> " animate-pulse"
+        _ -> ""
       }
+  }
+  let classes = case state {
+    "success" ->
+      size <> " shrink-0 rounded-full bg-blue-600 ring-2 ring-blue-800/30" <> motion
+    "failure" ->
+      size <> " shrink-0 rounded-full bg-red-600 ring-2 ring-red-800/30" <> motion
+    "running" | "queued" ->
+      size <> " shrink-0 rounded-full bg-sky-300 ring-2 ring-sky-600" <> motion
+    "skipped" ->
+      size <> " shrink-0 rounded-full bg-slate-400 ring-2 ring-slate-500/40" <> motion
+    _ -> size <> " shrink-0 rounded-full bg-slate-400" <> motion
+  }
+  span([attr.class(classes), attr.title(checks_status_title(state))], [])
+}
+
+fn checks_summary(pipeline: option.Option(Pipeline)) -> String {
+  case pipeline {
+    option.None -> "No checks have run for this merge request yet."
+    option.Some(run) ->
+      case run.state {
+        "success" -> "All checks passed"
+        "failure" -> "Some checks failed"
+        "running" -> "Checks are running"
+        "queued" -> "Checks are queued"
+        "skipped" -> "CI not configured for this commit"
+        _ -> "Check status: " <> run.state
+      }
+  }
+}
+
+fn checks_tab(detail: MergeRequestDetail) -> Element(Msg) {
+  case detail.pipeline {
+    option.None ->
+      div([attr.class(components.card)], [
+        p([attr.class("text-sm text-gh-muted")], [
+          text(checks_summary(option.None)),
+        ]),
+        p([attr.class("mt-2 text-sm text-gh-muted")], [
+          text("Use Re-run checks above after pushing a Dagger module (e.g. ci/dagger.json)."),
+        ]),
+      ])
+    option.Some(run) -> {
+      let module_name = case run.module_path {
+        option.Some(path) -> path
+        option.None -> "ci"
+      }
+      div([attr.class(components.card)], [
+        p([attr.class("mb-4 text-sm font-medium text-gh-ink")], [
+          text(checks_summary(option.Some(run))),
+        ]),
+        div(
+          [
+            attr.class(
+              "flex items-start gap-4 rounded-lg border border-slate-100 bg-slate-50/60 px-4 py-3",
+            ),
+          ],
+          [
+            checks_status_circle(run.state, "mt-0.5 h-4 w-4", True),
+            div([attr.class("min-w-0 flex-1")], [
+              p([attr.class("text-sm font-semibold text-gh-ink")], [text(module_name)]),
+              p([attr.class("mt-0.5 text-sm text-gh-muted")], [
+                text(pipeline_status_detail(run)),
+              ]),
+              p([attr.class("mt-1 font-mono text-xs text-gh-muted")], [
+                text(short_sha(run.commit_sha)),
+                case run.module_path {
+                  option.Some(path) -> text(" · " <> path)
+                  option.None -> text("")
+                },
+              ]),
+              pipeline_log_panel(run),
+            ]),
+          ],
+        ),
+        case pipeline_is_in_progress(option.Some(run)) {
+          True ->
+            p([attr.class("mt-3 text-xs text-gh-muted")], [
+              text("This page refreshes every few seconds while checks are in progress."),
+            ])
+          False -> text("")
+        },
+      ])
+    }
+  }
+}
+
+fn pipeline_log_panel(run: Pipeline) -> Element(Msg) {
+  let log_body = case run.log {
+    option.Some(log) if log != "" -> log
+    _ ->
+      case run.state {
+        "running" | "queued" -> "Waiting for log output from the CI worker…"
+        _ -> ""
+      }
+  }
+  case log_body {
+    "" -> text("")
+    content ->
+      unsafe_raw_html(
+        "",
+        "pre",
+        [
+          attr.class(
+            "mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 font-mono text-xs leading-relaxed text-slate-100",
+          ),
+        ],
+        ci_log.ansi_to_html(content),
+      )
   }
 }
 
@@ -708,7 +850,9 @@ fn action_buttons(
   model: Model,
   mr: MergeRequest,
   check: MergeCheck,
+  pipeline: option.Option(Pipeline),
 ) -> Element(Msg) {
+  let checks_busy = pipeline_is_in_progress(pipeline)
   case mr.state {
     "open" ->
       div([attr.class("relative w-full shrink-0 sm:w-auto")], [
@@ -727,6 +871,11 @@ fn action_buttons(
               [
                 attr.type_("button"),
                 attr.class(components.btn_secondary <> " " <> action_size <> " !px-4"),
+                attr.disabled(checks_busy),
+                attr.title(case checks_busy {
+                  True -> "Wait for the current check run to finish"
+                  False -> ""
+                }),
                 event.on_click(RerunChecks),
               ],
               [text("Re-run checks")],
@@ -776,34 +925,50 @@ fn action_buttons(
   }
 }
 
-fn tab_bar(active: Tab) -> Element(Msg) {
-  let tab_btn = fn(t: Tab, label: String) {
+fn tab_bar(active: Tab, pipeline: option.Option(Pipeline)) -> Element(Msg) {
+  let tab_btn = fn(t: Tab, label: String, status: option.Option(String)) {
     let classes = case active == t {
       True -> "border-b-2 border-gh-accent px-4 py-2 text-sm font-semibold text-gh-accent"
       False ->
         "border-b-2 border-transparent px-4 py-2 text-sm font-medium text-gh-muted hover:text-gh-ink"
     }
+    let status_icon = case status {
+      option.Some(state) -> checks_status_circle(state, "h-2.5 w-2.5", False)
+      option.None -> text("")
+    }
     button(
       [attr.type_("button"), attr.class(classes), event.on_click(TabChanged(t))],
-      [text(label)],
+      [
+        span([attr.class("inline-flex items-center gap-2")], [
+          status_icon,
+          text(label),
+        ]),
+      ],
     )
   }
+  let checks_status = case pipeline {
+    option.Some(run) -> option.Some(run.state)
+    option.None -> option.None
+  }
   div([attr.class("mb-4 flex border-b border-slate-200")], [
-    tab_btn(Conversation, "Conversation"),
-    tab_btn(Commits, "Commits"),
-    tab_btn(Changes, "Changes"),
+    tab_btn(Conversation, "Conversation", option.None),
+    tab_btn(Checks, "Checks", checks_status),
+    tab_btn(Commits, "Commits", option.None),
+    tab_btn(Changes, "Changes", option.None),
   ])
 }
 
-fn tab_content(model: Model, mr: MergeRequest) -> Element(Msg) {
+fn tab_content(model: Model, detail: MergeRequestDetail) -> Element(Msg) {
   case model.tab {
-    Conversation -> conversation_tab(model, mr)
+    Conversation -> conversation_tab(model, detail)
+    Checks -> checks_tab(detail)
     Commits -> commits_tab(model)
     Changes -> changes_tab(model)
   }
 }
 
-fn conversation_tab(model: Model, mr: MergeRequest) -> Element(Msg) {
+fn conversation_tab(model: Model, detail: MergeRequestDetail) -> Element(Msg) {
+  let mr = detail.merge_request
   let desc = case mr.description {
     option.Some(d) -> div([attr.class(components.card <> " mb-4")], [
       unsafe_raw_html("", "div", [attr.class("markdown-body text-sm")], markdown_body(d)),
