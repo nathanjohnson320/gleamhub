@@ -39,6 +39,25 @@ cd ui && npm install && npm run dev
 
 Sign in → **Organizations** → create an org → add a repo → **SSH keys** → paste your public key → clone/push (see [Try git over SSH](#try-git-over-ssh)).
 
+### MR CI (optional)
+
+Merge-request pipelines are **not** started by `docker compose up` alone. After steps 2–3 above (Postgres, git-ssh, and `gleam run` on the host), start the CI stack:
+
+```bash
+# from repo root — Dagger engine + worker that polls the API
+docker compose -f docker-compose.ci.yml up --build -d
+```
+
+| Piece | How it runs |
+|-------|-------------|
+| Postgres + git-ssh | `docker compose up` (step 2) |
+| Gleamhub API | `gleam run` in `server/` (step 3) |
+| CI worker + Dagger | `docker compose -f docker-compose.ci.yml up` |
+
+Keep **`INTERNAL_API_TOKEN`** the same in `/.env` and `server/.env` (the examples default to `dev-internal-token-change-me`). The worker calls the API at `http://host.docker.internal:9999` by default. On **Linux**, if jobs never run, set `GLEAMHUB_API_URL=http://172.17.0.1:9999` in `/.env` and restart the CI stack.
+
+In a hosted repo, commit a Dagger module (e.g. `ci/dagger.json` with a `ci` function). Open a merge request or push to the MR source branch; `post-receive` enqueues a run and status appears on the MR page. Test the module alone with `dagger call -m ./ci ci --source=.` — see [docs/ci-platform.md](docs/ci-platform.md) and [Merge requests](#merge-requests-same-repo).
+
 ### Clerk (only if example keys do not work)
 
 Use **one** Clerk application for both server and UI.
@@ -100,11 +119,7 @@ The server stores MR metadata in Postgres; diffs and merges run live against the
 
 ### CI for hosted repos
 
-Gleamhub can run **Dagger pipelines** for repositories it hosts. Commit a Dagger module (typically `ci/dagger.json` with a `ci` function); gleamhub runs it on MR events and shows status on the merge request page.
-
-- **Docs:** [docs/ci-platform.md](docs/ci-platform.md)
-- **Operator stack:** `docker compose -f docker-compose.ci.yml up --build -d`
-- **Local test (repo author):** `dagger call -m ./ci ci --source=.`
+Gleamhub runs **Dagger pipelines** on MR open and on pushes to an open MR’s source branch. Commit a module (typically `ci/dagger.json` with a `ci` function). Local operator setup: [MR CI (optional)](#mr-ci-optional) in [5-minute setup](#5-minute-setup). Full contract: [docs/ci-platform.md](docs/ci-platform.md). Repo authors can test with `dagger call -m ./ci ci --source=.`
 
 **Merge methods:** On an open MR, choose **Create merge commit** (default) or **Squash and merge** before confirming. Squash applies `git merge --squash` and a single commit on the target branch.
 
@@ -222,7 +237,8 @@ Org members with a registered SSH key can read/write all repos in that org (MVP 
 | `DATABASE_URL` | `server/.env` | Postgres (Docker sets this in compose) |
 | `GIT_REPOS_ROOT` | `server/.env` | Bare repo directory |
 | `GLEAMHUB_GIT_HOST` | `/.env` | Hostname in clone URLs (`localhost`) |
-| `GLEAMHUB_API_URL` | `/.env` | git-ssh → API URL when server runs on host |
+| `GLEAMHUB_API_URL` | `/.env` | git-ssh / CI worker → API URL when server runs on host |
+| `INTERNAL_API_TOKEN` | `/.env`, `server/.env` | Shared secret for git-ssh hooks and CI worker internal API |
 
 ---
 
