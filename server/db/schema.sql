@@ -1,4 +1,4 @@
-\restrict 3RNFh05g4gjALToxdwCCe8H7QlDpZ26mlRhDmIaUyMOgCe59DjY81XbC4aB913v
+\restrict ipThqRD0DZka9dzV6qZZo6e4Tsllh9qFireJnnhTGqhEwhrF51m5qDopLesHocY
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 18.3
@@ -109,6 +109,26 @@ CREATE TABLE public.organizations (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     slug character varying(64) NOT NULL,
     name character varying(255) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: pipeline_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pipeline_runs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    repository_id uuid NOT NULL,
+    merge_request_id uuid NOT NULL,
+    commit_sha character varying(40) NOT NULL,
+    module_path character varying(255),
+    entry_function character varying(64) DEFAULT 'ci'::character varying NOT NULL,
+    state character varying(32) NOT NULL,
+    trigger character varying(32) NOT NULL,
+    log_text text,
+    started_at timestamp with time zone,
+    finished_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
@@ -248,6 +268,14 @@ ALTER TABLE ONLY public.organizations
 
 
 --
+-- Name: pipeline_runs pipeline_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pipeline_runs
+    ADD CONSTRAINT pipeline_runs_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: protected_branches protected_branches_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -361,6 +389,20 @@ CREATE INDEX organization_members_user_id_idx ON public.organization_members USI
 
 
 --
+-- Name: pipeline_runs_merge_request_id_created_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX pipeline_runs_merge_request_id_created_at_idx ON public.pipeline_runs USING btree (merge_request_id, created_at DESC);
+
+
+--
+-- Name: pipeline_runs_state_created_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX pipeline_runs_state_created_at_idx ON public.pipeline_runs USING btree (state, created_at) WHERE ((state)::text = 'queued'::text);
+
+
+--
 -- Name: protected_branches_repository_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -470,6 +512,22 @@ ALTER TABLE ONLY public.organization_members
 
 
 --
+-- Name: pipeline_runs pipeline_runs_merge_request_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pipeline_runs
+    ADD CONSTRAINT pipeline_runs_merge_request_id_fkey FOREIGN KEY (merge_request_id) REFERENCES public.merge_requests(id) ON DELETE CASCADE;
+
+
+--
+-- Name: pipeline_runs pipeline_runs_repository_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pipeline_runs
+    ADD CONSTRAINT pipeline_runs_repository_id_fkey FOREIGN KEY (repository_id) REFERENCES public.repositories(id) ON DELETE CASCADE;
+
+
+--
 -- Name: protected_branches protected_branches_repository_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -497,7 +555,7 @@ ALTER TABLE ONLY public.ssh_public_keys
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 3RNFh05g4gjALToxdwCCe8H7QlDpZ26mlRhDmIaUyMOgCe59DjY81XbC4aB913v
+\unrestrict ipThqRD0DZka9dzV6qZZo6e4Tsllh9qFireJnnhTGqhEwhrF51m5qDopLesHocY
 
 
 --
@@ -508,4 +566,5 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20260527120000'),
     ('20260528120000'),
     ('20260529120000'),
-    ('20260529130000');
+    ('20260529130000'),
+    ('20260601120000');

@@ -151,6 +151,8 @@ pub fn merge_request_merge_route_test() {
       )
     let assert 201 = route_test_support.status(create)
 
+    route_test_support.complete_next_pipeline(ctx)
+
     let merge =
       route_test_support.dispatch(
         route_test_support.post_json(
@@ -191,6 +193,8 @@ pub fn merge_request_merge_delete_source_branch_test() {
         ),
         ctx,
       )
+
+    route_test_support.complete_next_pipeline(ctx)
 
     let merge =
       route_test_support.dispatch(
@@ -280,6 +284,8 @@ pub fn merge_request_merge_squash_route_test() {
         ),
         ctx,
       )
+
+    route_test_support.complete_next_pipeline(ctx)
 
     let merge =
       route_test_support.dispatch(

@@ -13,7 +13,7 @@ setup_fixture_repo() ->
       "/tmp",
       "gleamhub_git_test_" ++ integer_to_list(erlang:unique_integer([positive]))
     ]),
-  os:cmd("rm -rf " ++ quote(Work) ++ " && mkdir -p " ++ quote(Work) ++ "/src"),
+  os:cmd("rm -rf " ++ quote(Work) ++ " && mkdir -p " ++ quote(Work) ++ "/src " ++ quote(Work) ++ "/ci"),
   ok = file:write_file(
     filename:join([Work, "README.md"]),
     <<"# Gleamhub test\n\nHello from fixture.\n">>
@@ -35,10 +35,14 @@ setup_fixture_repo() ->
     filename:join([Work, "feature.txt"]),
     <<"feature branch\n">>
   ),
+  ok = file:write_file(
+    filename:join([Work, "ci", "dagger.json"]),
+    <<"{\"name\":\"demo-ci\"}\n">>
+  ),
   _ = os:cmd(
     "cd "
     ++ quote(Work)
-    ++ " && git checkout -q -b feature && git add feature.txt && git -c user.email=test@test.com -c user.name=Test commit -qm feature"
+    ++ " && git checkout -q -b feature && git add feature.txt ci/dagger.json && git -c user.email=test@test.com -c user.name=Test commit -qm feature"
   ),
   _ = os:cmd("cd " ++ quote(Work) ++ " && git checkout -q main"),
   list_to_binary(Work).

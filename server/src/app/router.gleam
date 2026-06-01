@@ -1,4 +1,5 @@
 import app/routes/api_routes
+import app/routes/ci_internal_routes
 import app/routes/clerk
 import app/routes/internal_auth
 import app/routes/issue_routes
@@ -46,6 +47,21 @@ pub fn handle_request(req: Request, ctx: Context) -> Response {
     ["internal", "ssh", "ref-update"] ->
       internal_auth.with_token(req, ctx, fn() {
         ssh_internal_routes.ref_update_check(req, ctx)
+      })
+
+    ["internal", "ci", "enqueue"] ->
+      internal_auth.with_token(req, ctx, fn() {
+        ci_internal_routes.enqueue(req, ctx)
+      })
+
+    ["internal", "ci", "jobs", "next"] ->
+      internal_auth.with_token(req, ctx, fn() {
+        ci_internal_routes.next_job(req, ctx)
+      })
+
+    ["internal", "ci", "jobs", run_id] ->
+      internal_auth.with_token(req, ctx, fn() {
+        ci_internal_routes.update_job(req, ctx, run_id)
       })
 
     _ -> {
@@ -123,6 +139,8 @@ pub fn handle_request(req: Request, ctx: Context) -> Response {
                 name,
                 num,
               )
+            ["api", "orgs", slug, "repos", name, "merge-requests", num, "rerun-checks"] ->
+              merge_request_routes.rerun_checks(req, ctx, slug, name, num)
             ["api", "orgs", slug, "repos", name, "merge-requests", num, "commits"] ->
               merge_request_routes.list_commits(req, ctx, slug, name, num)
             ["api", "orgs", slug, "repos", name, "merge-requests", num, "diff"] ->

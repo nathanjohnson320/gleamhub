@@ -1,6 +1,6 @@
 import api.{
   type DiffFile, type MergeCheck, type MergeRequest, type MergeRequestDetail,
-  type MrComment, type MrCommit,
+  type MrComment, type MrCommit, type Pipeline,
 }
 import components
 import config.{type Config}
@@ -14,7 +14,7 @@ import lustre/attribute as attr
 import lustre/effect.{type Effect, batch, none}
 import lustre/element.{type Element, text, unsafe_raw_html}
 import lustre/element/html.{
-  a, button, div, form, h2, h3, input, label, li, ol, option, p, select, span,
+  a, button, div, form, h2, h3, input, label, li, ol, option, p, pre, select, span,
   textarea, ul,
 }
 import lustre/event
@@ -80,6 +80,8 @@ pub type Msg {
   Merged(Result(MergeRequest, lustre_http.HttpError))
   CloseMr
   Closed(Result(MergeRequest, lustre_http.HttpError))
+  RerunChecks
+  ChecksRerun(Result(api.Pipeline, lustre_http.HttpError))
 }
 
 pub fn init(org_slug: String, repo_name: String, number: Int) -> Model {
@@ -342,7 +344,11 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
       Model(
         ..model,
         detail: option.map(model.detail, fn(d) {
-          api.MergeRequestDetail(merge_request: mr, merge_check: d.merge_check)
+          api.MergeRequestDetail(
+            merge_request: mr,
+            merge_check: d.merge_check,
+            pipeline: d.pipeline,
+          )
         }),
         error: option.None,
       ),
@@ -373,13 +379,40 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
       Model(
         ..model,
         detail: option.map(model.detail, fn(d) {
-          api.MergeRequestDetail(merge_request: mr, merge_check: d.merge_check)
+          api.MergeRequestDetail(
+            merge_request: mr,
+            merge_check: d.merge_check,
+            pipeline: d.pipeline,
+          )
         }),
       ),
       none(),
     )
     Closed(Error(_)) -> #(
       Model(..model, error: option.Some("Could not close merge request")),
+      none(),
+    )
+    RerunChecks -> #(
+      model,
+      lustre_http.post(
+        config,
+        api_base(config, model) <> "/rerun-checks",
+        json.object([]),
+        lustre_http.expect_json(api.pipeline_decoder(), ChecksRerun),
+      ),
+    )
+    ChecksRerun(Ok(pipeline)) -> #(
+      Model(
+        ..model,
+        detail: option.map(model.detail, fn(d) {
+          api.MergeRequestDetail(..d, pipeline: option.Some(pipeline))
+        }),
+        error: option.None,
+      ),
+      none(),
+    )
+    ChecksRerun(Error(_)) -> #(
+      Model(..model, error: option.Some("Could not re-run checks")),
       none(),
     )
   }
@@ -434,6 +467,8 @@ fn detail_view(
           text(mr.source_branch <> " → " <> mr.target_branch <> " · " <> mr.state),
         ]),
         merge_status_banner(model, mr, detail.merge_check),
+        pipeline_status_banner(detail.pipeline),
+        pipeline_log_panel(detail.pipeline),
       ]),
       action_buttons(model, mr, detail.merge_check),
     ]),
@@ -488,6 +523,64 @@ fn merge_check_banner(check: MergeCheck) -> Element(Msg) {
       p([attr.class("mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900")], [
         text(check.message),
       ])
+  }
+}
+
+fn pipeline_status_banner(pipeline: option.Option(Pipeline)) -> Element(Msg) {
+  case pipeline {
+    option.None -> text("")
+    option.Some(run) ->
+      p([attr.class(pipeline_banner_class(run.state))], [
+        text(pipeline_status_text(run)),
+      ])
+  }
+}
+
+fn pipeline_banner_class(state: String) -> String {
+  let base = "mt-2 rounded-lg px-3 py-2 text-sm "
+  case state {
+    "success" -> base <> "bg-emerald-50 text-emerald-900"
+    "failure" -> base <> "bg-red-50 text-red-900"
+    "running" | "queued" -> base <> "bg-sky-50 text-sky-900"
+    "skipped" -> base <> "bg-slate-50 text-slate-700"
+    _ -> base <> "bg-slate-50 text-slate-700"
+  }
+}
+
+fn pipeline_status_text(pipeline: Pipeline) -> String {
+  let module = case pipeline.module_path {
+    option.Some(path) -> " · module " <> path
+    option.None -> ""
+  }
+  case pipeline.state {
+    "success" -> "Checks passed for " <> short_sha(pipeline.commit_sha) <> module
+    "failure" -> "Checks failed for " <> short_sha(pipeline.commit_sha) <> module
+    "running" -> "Checks running for " <> short_sha(pipeline.commit_sha) <> module
+    "queued" -> "Checks queued for " <> short_sha(pipeline.commit_sha) <> module
+    "skipped" -> "CI not configured at " <> short_sha(pipeline.commit_sha)
+    _ -> "Pipeline " <> pipeline.state <> " · " <> short_sha(pipeline.commit_sha)
+  }
+}
+
+fn pipeline_log_panel(pipeline: option.Option(Pipeline)) -> Element(Msg) {
+  case pipeline {
+    option.None -> text("")
+    option.Some(run) ->
+      case run.log {
+        option.None -> text("")
+        option.Some("") -> text("")
+        option.Some(log) ->
+          pre([attr.class(
+            "mt-2 max-h-64 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100",
+          )], [text(log)])
+      }
+  }
+}
+
+fn short_sha(sha: String) -> String {
+  case string.length(sha) {
+    n if n >= 7 -> string.slice(sha, 0, 7)
+    _ -> sha
   }
 }
 
@@ -630,6 +723,14 @@ fn action_buttons(
               text("Merge as"),
             ]),
             merge_method_select(model),
+            button(
+              [
+                attr.type_("button"),
+                attr.class(components.btn_secondary <> " " <> action_size <> " !px-4"),
+                event.on_click(RerunChecks),
+              ],
+              [text("Re-run checks")],
+            ),
             button(
               [
                 attr.type_("button"),
@@ -805,10 +906,6 @@ fn author_initials(author: String) -> String {
       string.uppercase(string.slice(first, 0, 1))
       <> string.uppercase(string.slice(second, 0, 1))
   }
-}
-
-fn short_sha(sha: String) -> String {
-  string.slice(sha, 0, 7)
 }
 
 fn commits_chronological(commits: List(MrCommit)) -> List(MrCommit) {

@@ -60,6 +60,39 @@ pub type MergeRequestCommentRow {
   )
 }
 
+pub type PipelineRunRow {
+  PipelineRunRow(
+    id: String,
+    repository_id: String,
+    merge_request_id: String,
+    commit_sha: String,
+    module_path: String,
+    entry_function: String,
+    state: String,
+    trigger: String,
+    log_text: String,
+    started_at: Option(String),
+    finished_at: Option(String),
+    created_at: String,
+  )
+}
+
+pub type PipelineRunJobRow {
+  PipelineRunJobRow(
+    id: String,
+    repository_id: String,
+    merge_request_id: String,
+    commit_sha: String,
+    module_path: String,
+    entry_function: String,
+    state: String,
+    trigger: String,
+    org_slug: String,
+    repo_name: String,
+    disk_path: String,
+  )
+}
+
 pub type IssueRow {
   IssueRow(
     id: String,
@@ -532,6 +565,104 @@ pub fn insert_merge_request_comment(
   |> result.map(mr_comment_from_insert_row)
 }
 
+pub fn list_open_merge_requests_by_source(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  source_branch: String,
+) -> Result(List(MergeRequestRow), pog.QueryError) {
+  sql.mr_list_open_by_source(db, org_slug, repo_name, source_branch)
+  |> result_map_rows
+  |> result.map(list.map(_, mr_from_open_by_source_row))
+}
+
+pub fn pipeline_run_exists_for_sha(
+  db: pog.Connection,
+  merge_request_id: String,
+  commit_sha: String,
+) -> Result(Bool, pog.QueryError) {
+  let assert Ok(mr_uuid) = uuid.from_string(merge_request_id)
+  sql.pipeline_run_exists_for_sha(db, mr_uuid, commit_sha)
+  |> result_map_rows
+  |> result.map(fn(rows) { rows != [] })
+}
+
+pub fn insert_pipeline_run(
+  db: pog.Connection,
+  repository_id: String,
+  merge_request_id: String,
+  commit_sha: String,
+  module_path: Option(String),
+  entry_function: String,
+  state: String,
+  trigger: String,
+) -> Result(PipelineRunRow, pog.QueryError) {
+  let assert Ok(repo_uuid) = uuid.from_string(repository_id)
+  let assert Ok(mr_uuid) = uuid.from_string(merge_request_id)
+  sql.pipeline_run_insert(
+    db,
+    repo_uuid,
+    mr_uuid,
+    commit_sha,
+    nullable_text(module_path),
+    entry_function,
+    state,
+    trigger,
+  )
+  |> result_map_first_row
+  |> result.map(pipeline_run_from_insert_row)
+}
+
+pub fn get_latest_pipeline_run(
+  db: pog.Connection,
+  merge_request_id: String,
+) -> Result(PipelineRunRow, pog.QueryError) {
+  let assert Ok(mr_uuid) = uuid.from_string(merge_request_id)
+  sql.pipeline_run_get_latest(db, mr_uuid)
+  |> result_map_first_row
+  |> result.map(pipeline_run_from_latest_row)
+}
+
+pub fn get_latest_pipeline_run_optional(
+  db: pog.Connection,
+  merge_request_id: String,
+) -> Result(Option(PipelineRunRow), pog.QueryError) {
+  let assert Ok(mr_uuid) = uuid.from_string(merge_request_id)
+  sql.pipeline_run_get_latest(db, mr_uuid)
+  |> result_map_optional_row
+  |> result.map(option.map(_, pipeline_run_from_latest_row))
+}
+
+pub fn claim_next_pipeline_job(
+  db: pog.Connection,
+) -> Result(Option(PipelineRunJobRow), pog.QueryError) {
+  sql.pipeline_run_claim_next(db)
+  |> result_map_optional_row
+  |> result.map(option.map(_, pipeline_run_job_from_claim_row))
+}
+
+pub fn get_pipeline_run_job(
+  db: pog.Connection,
+  run_id: String,
+) -> Result(Option(PipelineRunJobRow), pog.QueryError) {
+  let assert Ok(run_uuid) = uuid.from_string(run_id)
+  sql.pipeline_run_get_by_id(db, run_uuid)
+  |> result_map_optional_row
+  |> result.map(option.map(_, pipeline_run_job_from_get_by_id_row))
+}
+
+pub fn update_pipeline_run(
+  db: pog.Connection,
+  run_id: String,
+  state: String,
+  log_text: String,
+) -> Result(PipelineRunRow, pog.QueryError) {
+  let assert Ok(run_uuid) = uuid.from_string(run_id)
+  sql.pipeline_run_update(db, run_uuid, state, log_text)
+  |> result_map_first_row
+  |> result.map(pipeline_run_from_update_row)
+}
+
 pub fn list_issues(
   db: pog.Connection,
   org_slug: String,
@@ -707,6 +838,140 @@ fn mr_from_close_row(row: sql.MrCloseRow) -> MergeRequestRow {
     row.closed_at,
     row.created_at,
     row.updated_at,
+  )
+}
+
+fn mr_from_open_by_source_row(row: sql.MrListOpenBySourceRow) -> MergeRequestRow {
+  mr_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.author_user_id,
+    row.source_branch,
+    row.target_branch,
+    row.state,
+    row.merge_commit_sha,
+    row.merged_by_user_id,
+    row.merged_at,
+    row.closed_at,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn pipeline_run_row(
+  id: String,
+  repository_id: String,
+  merge_request_id: String,
+  commit_sha: String,
+  module_path: String,
+  entry_function: String,
+  state: String,
+  trigger: String,
+  log_text: String,
+  started_at: String,
+  finished_at: String,
+  created_at: String,
+) -> PipelineRunRow {
+  PipelineRunRow(
+    id:,
+    repository_id:,
+    merge_request_id:,
+    commit_sha:,
+    module_path:,
+    entry_function:,
+    state:,
+    trigger:,
+    log_text:,
+    started_at: optional_timestamp(started_at),
+    finished_at: optional_timestamp(finished_at),
+    created_at:,
+  )
+}
+
+fn pipeline_run_from_insert_row(row: sql.PipelineRunInsertRow) -> PipelineRunRow {
+  pipeline_run_row(
+    row.id,
+    row.repository_id,
+    row.merge_request_id,
+    row.commit_sha,
+    row.module_path,
+    row.entry_function,
+    row.state,
+    row.trigger,
+    row.log_text,
+    row.started_at,
+    row.finished_at,
+    row.created_at,
+  )
+}
+
+fn pipeline_run_from_latest_row(row: sql.PipelineRunGetLatestRow) -> PipelineRunRow {
+  pipeline_run_row(
+    row.id,
+    row.repository_id,
+    row.merge_request_id,
+    row.commit_sha,
+    row.module_path,
+    row.entry_function,
+    row.state,
+    row.trigger,
+    row.log_text,
+    row.started_at,
+    row.finished_at,
+    row.created_at,
+  )
+}
+
+fn pipeline_run_from_update_row(row: sql.PipelineRunUpdateRow) -> PipelineRunRow {
+  pipeline_run_row(
+    row.id,
+    row.repository_id,
+    row.merge_request_id,
+    row.commit_sha,
+    row.module_path,
+    row.entry_function,
+    row.state,
+    row.trigger,
+    row.log_text,
+    row.started_at,
+    row.finished_at,
+    row.created_at,
+  )
+}
+
+fn pipeline_run_job_from_claim_row(row: sql.PipelineRunClaimNextRow) -> PipelineRunJobRow {
+  PipelineRunJobRow(
+    id: row.id,
+    repository_id: row.repository_id,
+    merge_request_id: row.merge_request_id,
+    commit_sha: row.commit_sha,
+    module_path: row.module_path,
+    entry_function: row.entry_function,
+    state: row.state,
+    trigger: row.trigger,
+    org_slug: "",
+    repo_name: "",
+    disk_path: "",
+  )
+}
+
+fn pipeline_run_job_from_get_by_id_row(
+  row: sql.PipelineRunGetByIdRow,
+) -> PipelineRunJobRow {
+  PipelineRunJobRow(
+    id: row.id,
+    repository_id: row.repository_id,
+    merge_request_id: row.merge_request_id,
+    commit_sha: row.commit_sha,
+    module_path: row.module_path,
+    entry_function: row.entry_function,
+    state: row.state,
+    trigger: row.trigger,
+    org_slug: row.org_slug,
+    repo_name: row.repo_name,
+    disk_path: row.disk_path,
   )
 }
 

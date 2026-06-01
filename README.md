@@ -94,9 +94,17 @@ After pushing a feature branch over SSH:
 1. Open the repository in the UI → **Merge requests** → **New merge request**.
 2. Choose **source** (your branch) and **target** (e.g. `main`), add a title, and create.
 3. On the merge request page, use **Conversation**, **Commits**, and **Changes**. On **Changes**, hover a line and click **+** to leave an inline review comment (line numbers refer to the new file version); **Conversation** is for MR-wide discussion.
-4. Org members with **write** access can **Merge** when Git reports no conflicts; the author (or a writer) can **Close** an open MR.
+4. Org members with **write** access can **Merge** when Git is clean and CI checks pass (if the repo defines a Dagger module); the author (or a writer) can **Close** an open MR.
 
 The server stores MR metadata in Postgres; diffs and merges run live against the bare repo (`git merge-base`, `git diff`, worktree merge + `update-ref`).
+
+### CI for hosted repos
+
+Gleamhub can run **Dagger pipelines** for repositories it hosts. Commit a Dagger module (typically `ci/dagger.json` with a `ci` function); gleamhub runs it on MR events and shows status on the merge request page.
+
+- **Docs:** [docs/ci-platform.md](docs/ci-platform.md)
+- **Operator stack:** `docker compose -f docker-compose.ci.yml up --build -d`
+- **Local test (repo author):** `dagger call -m ./ci ci --source=.`
 
 **Merge methods:** On an open MR, choose **Create merge commit** (default) or **Squash and merge** before confirming. Squash applies `git merge --squash` and a single commit on the target branch.
 

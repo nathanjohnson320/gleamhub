@@ -92,8 +92,8 @@ const readme_candidates = [
 @external(erlang, "git_exec_ffi", "init_bare")
 fn init_bare_ffi(path: String) -> String
 
-@external(erlang, "git_exec_ffi", "install_pre_receive_hook")
-fn install_pre_receive_hook_ffi(src: String, dest: String) -> String
+@external(erlang, "git_exec_ffi", "install_hook")
+fn install_hook_ffi(src: String, dest: String) -> String
 
 @external(erlang, "git_exec_ffi", "is_ancestor")
 fn is_ancestor_ffi(git_dir: String, oldrev: String, newrev: String) -> String
@@ -128,10 +128,17 @@ pub fn install_repo_hooks(root: String, disk_path: String) -> Result(Nil, String
   case repo_path(root, disk_path) {
     Error(_) -> Error("invalid repository path")
     Ok(git_dir) -> {
-      let src = hooks_directory() <> "/pre-receive"
-      let dest = git_dir <> "/hooks/pre-receive"
-      case install_pre_receive_hook_ffi(src, dest) {
-        "ok" -> Ok(Nil)
+      let hooks = hooks_directory()
+      let pre_src = hooks <> "/pre-receive"
+      let pre_dest = git_dir <> "/hooks/pre-receive"
+      let post_src = hooks <> "/post-receive"
+      let post_dest = git_dir <> "/hooks/post-receive"
+      case install_hook_ffi(pre_src, pre_dest) {
+        "ok" ->
+          case install_hook_ffi(post_src, post_dest) {
+            "ok" -> Ok(Nil)
+            _ -> Error("failed to install post-receive hook")
+          }
         _ -> Error("failed to install pre-receive hook")
       }
     }

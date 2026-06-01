@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+API_URL="${GLEAMHUB_API_URL:-http://host.docker.internal:9999}"
+INTERNAL_TOKEN="${INTERNAL_API_TOKEN:?missing INTERNAL_API_TOKEN}"
+ORG="${GLEAMHUB_ORG:?missing GLEAMHUB_ORG}"
+REPO="${GLEAMHUB_REPO:?missing GLEAMHUB_REPO}"
+
+while read -r _oldrev newrev refname; do
+  case "$refname" in
+    refs/heads/*) ;;
+    *) continue ;;
+  esac
+
+  branch="${refname#refs/heads/}"
+
+  curl -sf -o /dev/null -w '%{http_code}' -X POST \
+    -H "X-Gleamhub-Internal-Token: $INTERNAL_TOKEN" \
+    "$API_URL/internal/ci/enqueue" \
+    --data-urlencode "org=$ORG" \
+    --data-urlencode "repo=$REPO" \
+    --data-urlencode "branch=$branch" \
+    --data-urlencode "commit_sha=$newrev" \
+    --data-urlencode "ref=$refname" >/dev/null || true
+done
+
+exit 0

@@ -1,3 +1,6 @@
+import app/ci_discovery
+import app/ci_merge
+import app/ci_pipeline
 import app/clerk_api
 import app/database as database
 import app/git_exec
@@ -89,6 +92,55 @@ fn json_ok(body: json.Json, status: Int) -> Response {
   json.to_string(body) |> wisp.json_response(status)
 }
 
+fn compose_merge_check(
+  ctx: Context,
+  mr: database.MergeRequestRow,
+  git_dir: String,
+) -> Result(git_exec.MergeCheck, git_exec.GitError) {
+  use git_check <- result.try(
+    git_exec.merge_check_for_request(
+      git_dir,
+      mr.target_branch,
+      mr.source_branch,
+      mr.state,
+    ),
+  )
+  case mr.state {
+    "open" -> {
+      use head_sha <- result.try(
+        ci_discovery.branch_head_sha(git_dir, mr.source_branch)
+        |> result.map_error(fn(_) { git_exec.NotFound }),
+      )
+      let pipeline =
+        case database.get_latest_pipeline_run_optional(ctx.repo(), mr.id) {
+          Ok(run) -> run
+          Error(_) -> option.None
+        }
+      Ok(ci_merge.combine_merge_check(git_check, pipeline, head_sha))
+    }
+    _ -> Ok(git_check)
+  }
+}
+
+fn merge_detail_json(
+  ctx: Context,
+  mr: database.MergeRequestRow,
+  check: git_exec.MergeCheck,
+) -> Response {
+  let pipeline =
+    case database.get_latest_pipeline_run_optional(ctx.repo(), mr.id) {
+      Ok(option.Some(run)) -> json_api.pipeline_run_json(run)
+      Ok(option.None) -> json.null()
+      Error(_) -> json.null()
+    }
+  json.object([
+    #("merge_request", json_api.merge_request_json(mr)),
+    #("merge_check", json_api.merge_check_json(check)),
+    #("pipeline", pipeline),
+  ])
+  |> json_ok(200)
+}
+
 fn duplicate_mr_response(existing_number: Int) -> Response {
   json.object([
     #(
@@ -150,7 +202,7 @@ pub fn create_merge_request(
               case source == target {
                 True -> wisp.bad_request("Source and target branches must differ")
                 False ->
-                  with_repo(ctx, org_slug, repo_name, fn(_repo, git_dir) {
+                  with_repo(ctx, org_slug, repo_name, fn(repo, git_dir) {
                     case
                       git_exec.branch_exists(git_dir, source),
                       git_exec.branch_exists(git_dir, target)
@@ -180,8 +232,18 @@ pub fn create_merge_request(
                                 target,
                               )
                             {
-                              Ok(mr) ->
+                              Ok(mr) -> {
+                                let _ =
+                                  ci_pipeline.enqueue_for_merge_request(
+                                    ctx.repo(),
+                                    repo.id,
+                                    mr.id,
+                                    git_dir,
+                                    mr.source_branch,
+                                    "mr_open",
+                                  )
                                 json_ok(json_api.merge_request_json(mr), 201)
+                              }
                               Error(_) -> wisp.internal_server_error()
                             }
                           Error(_) -> wisp.internal_server_error()
@@ -221,20 +283,8 @@ pub fn get_merge_request_detail(
         Error(r) -> r
         Ok(number) ->
           with_mr(ctx, org_slug, repo_name, number, fn(mr, git_dir) {
-            case
-              git_exec.merge_check_for_request(
-                git_dir,
-                mr.target_branch,
-                mr.source_branch,
-                mr.state,
-              )
-            {
-              Ok(check) ->
-                json.object([
-                  #("merge_request", json_api.merge_request_json(mr)),
-                  #("merge_check", json_api.merge_check_json(check)),
-                ])
-                |> json_ok(200)
+            case compose_merge_check(ctx, mr, git_dir) {
+              Ok(check) -> merge_detail_json(ctx, mr, check)
               Error(e) -> repo_browse_routes.git_error_response(e)
             }
           })
@@ -437,40 +487,59 @@ pub fn merge_merge_request(
                   with_mr(ctx, org_slug, repo_name, number, fn(mr, git_dir) {
                     case mr.state {
                       "open" ->
-                        case
-                          git_exec.merge_branches(
-                            git_dir,
-                            mr.target_branch,
-                            mr.source_branch,
-                            body.method,
-                            merge_commit_message(mr),
-                          )
-                        {
-                          Ok(sha) ->
-                            case
-                              database.merge_merge_request(
-                                ctx.repo(),
-                                org_slug,
-                                repo_name,
-                                number,
-                                sha,
-                                user_id(ctx),
-                              )
-                            {
-                              Ok(updated) -> {
-                                let _ =
-                                  maybe_delete_source_branch(
-                                    ctx,
-                                    org_slug,
-                                    repo_name,
+                        case compose_merge_check(ctx, mr, git_dir) {
+                          Ok(check) ->
+                            case check.mergeable {
+                              False ->
+                                json.object([
+                                  #("error", json.string(check.message)),
+                                ])
+                                |> json.to_string
+                                |> fn(body) {
+                                  wisp.response(422) |> wisp.json_body(body)
+                                }
+                              True ->
+                                case
+                                  git_exec.merge_branches(
                                     git_dir,
-                                    mr.source_branch,
                                     mr.target_branch,
-                                    body.delete_source_branch,
+                                    mr.source_branch,
+                                    body.method,
+                                    merge_commit_message(mr),
                                   )
-                                json_ok(json_api.merge_request_json(updated), 200)
-                              }
-                              Error(_) -> wisp.internal_server_error()
+                                {
+                                  Ok(sha) ->
+                                    case
+                                      database.merge_merge_request(
+                                        ctx.repo(),
+                                        org_slug,
+                                        repo_name,
+                                        number,
+                                        sha,
+                                        user_id(ctx),
+                                      )
+                                    {
+                                      Ok(updated) -> {
+                                        let _ =
+                                          maybe_delete_source_branch(
+                                            ctx,
+                                            org_slug,
+                                            repo_name,
+                                            git_dir,
+                                            mr.source_branch,
+                                            mr.target_branch,
+                                            body.delete_source_branch,
+                                          )
+                                        json_ok(
+                                          json_api.merge_request_json(updated),
+                                          200,
+                                        )
+                                      }
+                                      Error(_) -> wisp.internal_server_error()
+                                    }
+                                  Error(e) ->
+                                    repo_browse_routes.git_error_response(e)
+                                }
                             }
                           Error(e) -> repo_browse_routes.git_error_response(e)
                         }
@@ -478,6 +547,58 @@ pub fn merge_merge_request(
                     }
                   })
               }
+          }
+      }
+  }
+}
+
+pub fn rerun_checks(
+  req: Request,
+  ctx: Context,
+  org_slug: String,
+  repo_name: String,
+  number_str: String,
+) -> Response {
+  use <- wisp.require_method(req, http.Post)
+  case ensure_user(ctx) {
+    Error(r) -> r
+    Ok(_) ->
+      case database.member_can_write(ctx.repo(), user_id(ctx), org_slug) {
+        False -> wisp.response(403)
+        True ->
+          case parse_mr_number(number_str) {
+            Error(r) -> r
+            Ok(number) ->
+              with_repo(ctx, org_slug, repo_name, fn(repo, git_dir) {
+                case database.get_merge_request(
+                  ctx.repo(),
+                  org_slug,
+                  repo_name,
+                  number,
+                ) {
+                  Ok(option.None) -> wisp.not_found()
+                  Error(_) -> wisp.internal_server_error()
+                  Ok(option.Some(mr)) ->
+                    case mr.state {
+                      "open" ->
+                        case
+                          ci_pipeline.enqueue_for_merge_request(
+                            ctx.repo(),
+                            repo.id,
+                            mr.id,
+                            git_dir,
+                            mr.source_branch,
+                            "manual",
+                          )
+                        {
+                          Ok(run) ->
+                            json_ok(json_api.pipeline_run_json(run), 200)
+                          Error(_) -> wisp.internal_server_error()
+                        }
+                      _ -> wisp.unprocessable_content()
+                    }
+                }
+              })
           }
       }
   }

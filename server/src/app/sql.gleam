@@ -1312,6 +1312,107 @@ ORDER BY mr.number DESC;
   |> pog.execute(db)
 }
 
+/// A row you get from running the `mr_list_open_by_source` query
+/// defined in `./src/app/sql/mr_list_open_by_source.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type MrListOpenBySourceRow {
+  MrListOpenBySourceRow(
+    id: String,
+    number: Int,
+    title: String,
+    description: Option(String),
+    author_user_id: String,
+    source_branch: String,
+    target_branch: String,
+    state: String,
+    merge_commit_sha: Option(String),
+    merged_by_user_id: Option(String),
+    merged_at: String,
+    closed_at: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+/// Runs the `mr_list_open_by_source` query
+/// defined in `./src/app/sql/mr_list_open_by_source.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn mr_list_open_by_source(
+  db: pog.Connection,
+  arg_1: String,
+  arg_2: String,
+  arg_3: String,
+) -> Result(pog.Returned(MrListOpenBySourceRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use number <- decode.field(1, decode.int)
+    use title <- decode.field(2, decode.string)
+    use description <- decode.field(3, decode.optional(decode.string))
+    use author_user_id <- decode.field(4, decode.string)
+    use source_branch <- decode.field(5, decode.string)
+    use target_branch <- decode.field(6, decode.string)
+    use state <- decode.field(7, decode.string)
+    use merge_commit_sha <- decode.field(8, decode.optional(decode.string))
+    use merged_by_user_id <- decode.field(9, decode.optional(decode.string))
+    use merged_at <- decode.field(10, decode.string)
+    use closed_at <- decode.field(11, decode.string)
+    use created_at <- decode.field(12, decode.string)
+    use updated_at <- decode.field(13, decode.string)
+    decode.success(MrListOpenBySourceRow(
+      id:,
+      number:,
+      title:,
+      description:,
+      author_user_id:,
+      source_branch:,
+      target_branch:,
+      state:,
+      merge_commit_sha:,
+      merged_by_user_id:,
+      merged_at:,
+      closed_at:,
+      created_at:,
+      updated_at:,
+    ))
+  }
+
+  "SELECT
+  mr.id::text,
+  mr.number,
+  mr.title,
+  mr.description,
+  mr.author_user_id,
+  mr.source_branch,
+  mr.target_branch,
+  mr.state,
+  mr.merge_commit_sha,
+  mr.merged_by_user_id,
+  COALESCE(mr.merged_at::text, '') AS merged_at,
+  COALESCE(mr.closed_at::text, '') AS closed_at,
+  mr.created_at::text,
+  mr.updated_at::text
+FROM merge_requests mr
+INNER JOIN repositories r ON r.id = mr.repository_id
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE o.slug = $1
+  AND r.name = $2
+  AND mr.source_branch = $3
+  AND mr.state = 'open';
+"
+  |> pog.query
+  |> pog.parameter(pog.text(arg_1))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.parameter(pog.text(arg_3))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
 /// A row you get from running the `mr_merge` query
 /// defined in `./src/app/sql/mr_merge.sql`.
 ///
@@ -1752,6 +1853,505 @@ ORDER BY pb.branch_name;
   |> pog.query
   |> pog.parameter(pog.text(arg_1))
   |> pog.parameter(pog.text(arg_2))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `pipeline_run_claim_next` query
+/// defined in `./src/app/sql/pipeline_run_claim_next.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type PipelineRunClaimNextRow {
+  PipelineRunClaimNextRow(
+    id: String,
+    repository_id: String,
+    merge_request_id: String,
+    commit_sha: String,
+    module_path: String,
+    entry_function: String,
+    state: String,
+    trigger: String,
+  )
+}
+
+/// Runs the `pipeline_run_claim_next` query
+/// defined in `./src/app/sql/pipeline_run_claim_next.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn pipeline_run_claim_next(
+  db: pog.Connection,
+) -> Result(pog.Returned(PipelineRunClaimNextRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use repository_id <- decode.field(1, decode.string)
+    use merge_request_id <- decode.field(2, decode.string)
+    use commit_sha <- decode.field(3, decode.string)
+    use module_path <- decode.field(4, decode.string)
+    use entry_function <- decode.field(5, decode.string)
+    use state <- decode.field(6, decode.string)
+    use trigger <- decode.field(7, decode.string)
+    decode.success(PipelineRunClaimNextRow(
+      id:,
+      repository_id:,
+      merge_request_id:,
+      commit_sha:,
+      module_path:,
+      entry_function:,
+      state:,
+      trigger:,
+    ))
+  }
+
+  "UPDATE pipeline_runs pr
+SET
+  state = 'running',
+  started_at = now()
+FROM (
+  SELECT id
+  FROM pipeline_runs
+  WHERE state = 'queued'
+  ORDER BY created_at
+  FOR UPDATE SKIP LOCKED
+  LIMIT 1
+) picked
+WHERE pr.id = picked.id
+RETURNING
+  pr.id::text,
+  pr.repository_id::text,
+  pr.merge_request_id::text,
+  pr.commit_sha,
+  COALESCE(pr.module_path, '') AS module_path,
+  pr.entry_function,
+  pr.state,
+  pr.trigger;
+"
+  |> pog.query
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `pipeline_run_exists_for_sha` query
+/// defined in `./src/app/sql/pipeline_run_exists_for_sha.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type PipelineRunExistsForShaRow {
+  PipelineRunExistsForShaRow(id: String)
+}
+
+/// Runs the `pipeline_run_exists_for_sha` query
+/// defined in `./src/app/sql/pipeline_run_exists_for_sha.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn pipeline_run_exists_for_sha(
+  db: pog.Connection,
+  arg_1: Uuid,
+  arg_2: String,
+) -> Result(pog.Returned(PipelineRunExistsForShaRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    decode.success(PipelineRunExistsForShaRow(id:))
+  }
+
+  "SELECT pr.id::text
+FROM pipeline_runs pr
+WHERE pr.merge_request_id = $1::uuid
+  AND pr.commit_sha = $2
+LIMIT 1;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(uuid.to_string(arg_1)))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `pipeline_run_get_by_id` query
+/// defined in `./src/app/sql/pipeline_run_get_by_id.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type PipelineRunGetByIdRow {
+  PipelineRunGetByIdRow(
+    id: String,
+    repository_id: String,
+    merge_request_id: String,
+    commit_sha: String,
+    module_path: String,
+    entry_function: String,
+    state: String,
+    trigger: String,
+    log_text: String,
+    started_at: String,
+    finished_at: String,
+    created_at: String,
+    org_slug: String,
+    repo_name: String,
+    disk_path: String,
+  )
+}
+
+/// Runs the `pipeline_run_get_by_id` query
+/// defined in `./src/app/sql/pipeline_run_get_by_id.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn pipeline_run_get_by_id(
+  db: pog.Connection,
+  arg_1: Uuid,
+) -> Result(pog.Returned(PipelineRunGetByIdRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use repository_id <- decode.field(1, decode.string)
+    use merge_request_id <- decode.field(2, decode.string)
+    use commit_sha <- decode.field(3, decode.string)
+    use module_path <- decode.field(4, decode.string)
+    use entry_function <- decode.field(5, decode.string)
+    use state <- decode.field(6, decode.string)
+    use trigger <- decode.field(7, decode.string)
+    use log_text <- decode.field(8, decode.string)
+    use started_at <- decode.field(9, decode.string)
+    use finished_at <- decode.field(10, decode.string)
+    use created_at <- decode.field(11, decode.string)
+    use org_slug <- decode.field(12, decode.string)
+    use repo_name <- decode.field(13, decode.string)
+    use disk_path <- decode.field(14, decode.string)
+    decode.success(PipelineRunGetByIdRow(
+      id:,
+      repository_id:,
+      merge_request_id:,
+      commit_sha:,
+      module_path:,
+      entry_function:,
+      state:,
+      trigger:,
+      log_text:,
+      started_at:,
+      finished_at:,
+      created_at:,
+      org_slug:,
+      repo_name:,
+      disk_path:,
+    ))
+  }
+
+  "SELECT
+  pr.id::text,
+  pr.repository_id::text,
+  pr.merge_request_id::text,
+  pr.commit_sha,
+  COALESCE(pr.module_path, '') AS module_path,
+  pr.entry_function,
+  pr.state,
+  pr.trigger,
+  COALESCE(pr.log_text, '') AS log_text,
+  COALESCE(pr.started_at::text, '') AS started_at,
+  COALESCE(pr.finished_at::text, '') AS finished_at,
+  pr.created_at::text,
+  o.slug AS org_slug,
+  r.name AS repo_name,
+  r.disk_path
+FROM pipeline_runs pr
+INNER JOIN repositories r ON r.id = pr.repository_id
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE pr.id = $1::uuid;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(uuid.to_string(arg_1)))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `pipeline_run_get_latest` query
+/// defined in `./src/app/sql/pipeline_run_get_latest.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type PipelineRunGetLatestRow {
+  PipelineRunGetLatestRow(
+    id: String,
+    repository_id: String,
+    merge_request_id: String,
+    commit_sha: String,
+    module_path: String,
+    entry_function: String,
+    state: String,
+    trigger: String,
+    log_text: String,
+    started_at: String,
+    finished_at: String,
+    created_at: String,
+  )
+}
+
+/// Runs the `pipeline_run_get_latest` query
+/// defined in `./src/app/sql/pipeline_run_get_latest.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn pipeline_run_get_latest(
+  db: pog.Connection,
+  arg_1: Uuid,
+) -> Result(pog.Returned(PipelineRunGetLatestRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use repository_id <- decode.field(1, decode.string)
+    use merge_request_id <- decode.field(2, decode.string)
+    use commit_sha <- decode.field(3, decode.string)
+    use module_path <- decode.field(4, decode.string)
+    use entry_function <- decode.field(5, decode.string)
+    use state <- decode.field(6, decode.string)
+    use trigger <- decode.field(7, decode.string)
+    use log_text <- decode.field(8, decode.string)
+    use started_at <- decode.field(9, decode.string)
+    use finished_at <- decode.field(10, decode.string)
+    use created_at <- decode.field(11, decode.string)
+    decode.success(PipelineRunGetLatestRow(
+      id:,
+      repository_id:,
+      merge_request_id:,
+      commit_sha:,
+      module_path:,
+      entry_function:,
+      state:,
+      trigger:,
+      log_text:,
+      started_at:,
+      finished_at:,
+      created_at:,
+    ))
+  }
+
+  "SELECT
+  pr.id::text,
+  pr.repository_id::text,
+  pr.merge_request_id::text,
+  pr.commit_sha,
+  COALESCE(pr.module_path, '') AS module_path,
+  pr.entry_function,
+  pr.state,
+  pr.trigger,
+  COALESCE(pr.log_text, '') AS log_text,
+  COALESCE(pr.started_at::text, '') AS started_at,
+  COALESCE(pr.finished_at::text, '') AS finished_at,
+  pr.created_at::text
+FROM pipeline_runs pr
+WHERE pr.merge_request_id = $1::uuid
+ORDER BY pr.created_at DESC
+LIMIT 1;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(uuid.to_string(arg_1)))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `pipeline_run_insert` query
+/// defined in `./src/app/sql/pipeline_run_insert.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type PipelineRunInsertRow {
+  PipelineRunInsertRow(
+    id: String,
+    repository_id: String,
+    merge_request_id: String,
+    commit_sha: String,
+    module_path: String,
+    entry_function: String,
+    state: String,
+    trigger: String,
+    log_text: String,
+    started_at: String,
+    finished_at: String,
+    created_at: String,
+  )
+}
+
+/// Runs the `pipeline_run_insert` query
+/// defined in `./src/app/sql/pipeline_run_insert.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn pipeline_run_insert(
+  db: pog.Connection,
+  arg_1: Uuid,
+  arg_2: Uuid,
+  arg_3: String,
+  arg_4: String,
+  arg_5: String,
+  arg_6: String,
+  arg_7: String,
+) -> Result(pog.Returned(PipelineRunInsertRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use repository_id <- decode.field(1, decode.string)
+    use merge_request_id <- decode.field(2, decode.string)
+    use commit_sha <- decode.field(3, decode.string)
+    use module_path <- decode.field(4, decode.string)
+    use entry_function <- decode.field(5, decode.string)
+    use state <- decode.field(6, decode.string)
+    use trigger <- decode.field(7, decode.string)
+    use log_text <- decode.field(8, decode.string)
+    use started_at <- decode.field(9, decode.string)
+    use finished_at <- decode.field(10, decode.string)
+    use created_at <- decode.field(11, decode.string)
+    decode.success(PipelineRunInsertRow(
+      id:,
+      repository_id:,
+      merge_request_id:,
+      commit_sha:,
+      module_path:,
+      entry_function:,
+      state:,
+      trigger:,
+      log_text:,
+      started_at:,
+      finished_at:,
+      created_at:,
+    ))
+  }
+
+  "INSERT INTO pipeline_runs (
+  repository_id,
+  merge_request_id,
+  commit_sha,
+  module_path,
+  entry_function,
+  state,
+  trigger
+)
+VALUES ($1::uuid, $2::uuid, $3, NULLIF($4, ''), $5, $6, $7)
+RETURNING
+  id::text,
+  repository_id::text,
+  merge_request_id::text,
+  commit_sha,
+  COALESCE(module_path, '') AS module_path,
+  entry_function,
+  state,
+  trigger,
+  COALESCE(log_text, '') AS log_text,
+  COALESCE(started_at::text, '') AS started_at,
+  COALESCE(finished_at::text, '') AS finished_at,
+  created_at::text;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(uuid.to_string(arg_1)))
+  |> pog.parameter(pog.text(uuid.to_string(arg_2)))
+  |> pog.parameter(pog.text(arg_3))
+  |> pog.parameter(pog.text(arg_4))
+  |> pog.parameter(pog.text(arg_5))
+  |> pog.parameter(pog.text(arg_6))
+  |> pog.parameter(pog.text(arg_7))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `pipeline_run_update` query
+/// defined in `./src/app/sql/pipeline_run_update.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.6.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type PipelineRunUpdateRow {
+  PipelineRunUpdateRow(
+    id: String,
+    repository_id: String,
+    merge_request_id: String,
+    commit_sha: String,
+    module_path: String,
+    entry_function: String,
+    state: String,
+    trigger: String,
+    log_text: String,
+    started_at: String,
+    finished_at: String,
+    created_at: String,
+  )
+}
+
+/// Runs the `pipeline_run_update` query
+/// defined in `./src/app/sql/pipeline_run_update.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.6.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn pipeline_run_update(
+  db: pog.Connection,
+  arg_1: Uuid,
+  arg_2: String,
+  arg_3: String,
+) -> Result(pog.Returned(PipelineRunUpdateRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use repository_id <- decode.field(1, decode.string)
+    use merge_request_id <- decode.field(2, decode.string)
+    use commit_sha <- decode.field(3, decode.string)
+    use module_path <- decode.field(4, decode.string)
+    use entry_function <- decode.field(5, decode.string)
+    use state <- decode.field(6, decode.string)
+    use trigger <- decode.field(7, decode.string)
+    use log_text <- decode.field(8, decode.string)
+    use started_at <- decode.field(9, decode.string)
+    use finished_at <- decode.field(10, decode.string)
+    use created_at <- decode.field(11, decode.string)
+    decode.success(PipelineRunUpdateRow(
+      id:,
+      repository_id:,
+      merge_request_id:,
+      commit_sha:,
+      module_path:,
+      entry_function:,
+      state:,
+      trigger:,
+      log_text:,
+      started_at:,
+      finished_at:,
+      created_at:,
+    ))
+  }
+
+  "UPDATE pipeline_runs
+SET
+  state = $2::varchar,
+  log_text = NULLIF($3, ''),
+  finished_at = CASE
+    WHEN $2::varchar IN ('success', 'failure', 'cancelled', 'skipped') THEN now()
+    ELSE finished_at
+  END
+WHERE id = $1::uuid
+RETURNING
+  id::text,
+  repository_id::text,
+  merge_request_id::text,
+  commit_sha,
+  COALESCE(module_path, '') AS module_path,
+  entry_function,
+  state,
+  trigger,
+  COALESCE(log_text, '') AS log_text,
+  COALESCE(started_at::text, '') AS started_at,
+  COALESCE(finished_at::text, '') AS finished_at,
+  created_at::text;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(uuid.to_string(arg_1)))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.parameter(pog.text(arg_3))
   |> pog.returning(decoder)
   |> pog.execute(db)
 }

@@ -1,6 +1,6 @@
 import app/database.{
   type IssueCommentRow, type IssueRow, type KeyRow, type MergeRequestCommentRow,
-  type MergeRequestRow, type OrgRow, type RepoRow, type UserRow,
+  type MergeRequestRow, type OrgRow, type PipelineRunRow, type RepoRow, type UserRow,
 }
 import app/git_exec.{
   type BlobContent, type CommitEntry, type DiffFile, type MergeCheck,
@@ -315,6 +315,42 @@ pub fn merge_check_json(check: MergeCheck) -> json.Json {
   json.object([
     #("mergeable", json.bool(check.mergeable)),
     #("message", json.string(check.message)),
+  ])
+}
+
+pub fn pipeline_run_json(run: PipelineRunRow) -> json.Json {
+  json.object([
+    #("state", json.string(run.state)),
+    #("commit_sha", json.string(run.commit_sha)),
+    #(
+      "module_path",
+      case run.module_path {
+        "" -> json.null()
+        path -> json.string(path)
+      },
+    ),
+    #("entry_function", json.string(run.entry_function)),
+    #(
+      "started_at",
+      case run.started_at {
+        option.Some(at) -> json.string(at)
+        option.None -> json.null()
+      },
+    ),
+    #(
+      "finished_at",
+      case run.finished_at {
+        option.Some(at) -> json.string(at)
+        option.None -> json.null()
+      },
+    ),
+    #(
+      "log",
+      case run.log_text {
+        "" -> json.null()
+        text -> json.string(text)
+      },
+    ),
   ])
 }
 

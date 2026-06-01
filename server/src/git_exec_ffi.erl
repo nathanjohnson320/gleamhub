@@ -1,6 +1,6 @@
 -module(git_exec_ffi).
 -include_lib("kernel/include/file.hrl").
--export([init_bare/1, run_git/2, install_pre_receive_hook/2, is_ancestor/3]).
+-export([init_bare/1, run_git/2, install_hook/2, install_pre_receive_hook/2, is_ancestor/3]).
 
 init_bare(PathBin) when is_binary(PathBin) ->
   Path = binary_to_list(PathBin),
@@ -8,6 +8,9 @@ init_bare(PathBin) when is_binary(PathBin) ->
     {0, _, _} -> <<"ok">>;
     {_, Out, _} -> {<<"error">>, git_cmd:gleam_string(Out)}
   end.
+
+install_hook(SrcBin, DestBin) ->
+  install_pre_receive_hook(SrcBin, DestBin).
 
 install_pre_receive_hook(SrcBin, DestBin) ->
   Src = binary_to_list(SrcBin),

@@ -206,8 +206,24 @@ pub type MergeCheck {
   MergeCheck(mergeable: Bool, message: String)
 }
 
+pub type Pipeline {
+  Pipeline(
+    state: String,
+    commit_sha: String,
+    module_path: option.Option(String),
+    entry_function: String,
+    started_at: option.Option(String),
+    finished_at: option.Option(String),
+    log: option.Option(String),
+  )
+}
+
 pub type MergeRequestDetail {
-  MergeRequestDetail(merge_request: MergeRequest, merge_check: MergeCheck)
+  MergeRequestDetail(
+    merge_request: MergeRequest,
+    merge_check: MergeCheck,
+    pipeline: option.Option(Pipeline),
+  )
 }
 
 pub type MrComment {
@@ -303,7 +319,27 @@ pub fn merge_requests_decoder() -> decode.Decoder(List(MergeRequest)) {
 pub fn merge_request_detail_decoder() -> decode.Decoder(MergeRequestDetail) {
   use merge_request <- decode.field("merge_request", merge_request_decoder())
   use merge_check <- decode.field("merge_check", merge_check_decoder())
-  decode.success(MergeRequestDetail(merge_request:, merge_check:))
+  use pipeline <- decode.field("pipeline", decode.optional(pipeline_decoder()))
+  decode.success(MergeRequestDetail(merge_request:, merge_check:, pipeline:))
+}
+
+pub fn pipeline_decoder() -> decode.Decoder(Pipeline) {
+  use state <- decode.field("state", decode.string)
+  use commit_sha <- decode.field("commit_sha", decode.string)
+  use module_path <- decode.field("module_path", decode.optional(decode.string))
+  use entry_function <- decode.field("entry_function", decode.string)
+  use started_at <- decode.field("started_at", decode.optional(decode.string))
+  use finished_at <- decode.field("finished_at", decode.optional(decode.string))
+  use log <- decode.field("log", decode.optional(decode.string))
+  decode.success(Pipeline(
+    state:,
+    commit_sha:,
+    module_path:,
+    entry_function:,
+    started_at:,
+    finished_at:,
+    log:,
+  ))
 }
 
 pub fn merge_check_decoder() -> decode.Decoder(MergeCheck) {

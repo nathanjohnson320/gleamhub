@@ -206,7 +206,9 @@ pub fn install_repo_hooks_test() {
   let assert Ok(git_dir) = git_exec.repo_path(root, disk)
   let assert Ok(Nil) = git_exec.install_repo_hooks(root, disk)
   let hook_path = git_dir <> "/hooks/pre-receive"
+  let post_hook_path = git_dir <> "/hooks/post-receive"
   let assert Ok(True) = simplifile.is_file(hook_path)
+  let assert Ok(True) = simplifile.is_file(post_hook_path)
   let _ = git_exec.remove_bare_repo(root, disk)
   let _ = simplifile.delete(root)
 }

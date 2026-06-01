@@ -1,6 +1,7 @@
 import app/clerk_api.{type Client}
 import app/router
 import app/web
+import gleam/dynamic/decode
 import gleam/http
 import gleam/json
 import gleam/option
@@ -75,6 +76,44 @@ pub fn bearer_token(sign: SignKey, user_id: String) -> String {
 pub fn internal_get(path: String) -> wisp.Request {
   simulate.request(http.Get, path)
   |> simulate.header("x-gleamhub-internal-token", internal_api_token)
+}
+
+pub fn internal_post(path: String) -> wisp.Request {
+  simulate.request(http.Post, path)
+  |> simulate.header("x-gleamhub-internal-token", internal_api_token)
+}
+
+pub fn internal_patch(path: String, body: json.Json) -> wisp.Request {
+  simulate.request(http.Patch, path)
+  |> simulate.header("x-gleamhub-internal-token", internal_api_token)
+  |> simulate.json_body(body)
+}
+
+/// Claim and mark success on the next queued CI job (for integration tests).
+pub fn complete_next_pipeline(ctx: web.Context) -> Nil {
+  let next = dispatch(internal_get("/internal/ci/jobs/next"), ctx)
+  case status(next) {
+    200 -> {
+      case json.parse(body(next), decode.at(["id"], decode.string)) {
+        Ok(run_id) -> {
+          let _ =
+            dispatch(
+              internal_patch(
+                "/internal/ci/jobs/" <> run_id,
+                json.object([
+                  #("state", json.string("success")),
+                  #("log", json.string("ok\n")),
+                ]),
+              ),
+              ctx,
+            )
+          Nil
+        }
+        Error(_) -> Nil
+      }
+    }
+    _ -> Nil
+  }
 }
 
 pub fn get(path: String, token: option.Option(String)) -> wisp.Request {

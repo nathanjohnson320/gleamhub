@@ -1,4 +1,4 @@
-import app/database.{KeyRow, MergeRequestCommentRow, MergeRequestRow, OrgRow, RepoRow, UserRow}
+import app/database.{KeyRow, MergeRequestCommentRow, MergeRequestRow, OrgRow, PipelineRunRow, RepoRow, UserRow}
 import app/git_exec.{
   BlobContent, CommitEntry, DiffFile, MergeCheck, TreeEntry, Blob, Submodule, Symlink,
   Tree,
@@ -135,6 +135,27 @@ pub fn merge_check_json_test() {
   let s = json_api.merge_check_json(check) |> json_string
   let assert True = string.contains(s, "\"mergeable\":false")
   let assert True = string.contains(s, "conflicts")
+}
+
+pub fn pipeline_run_json_test() {
+  let run =
+    PipelineRunRow(
+      id: "id",
+      repository_id: "repo",
+      merge_request_id: "mr",
+      commit_sha: "abc",
+      module_path: "ci",
+      entry_function: "ci",
+      state: "success",
+      trigger: "mr_open",
+      log_text: "ok",
+      started_at: option.Some("2026-01-01T00:00:00Z"),
+      finished_at: option.Some("2026-01-01T00:01:00Z"),
+      created_at: "2026-01-01T00:00:00Z",
+    )
+  let s = json_api.pipeline_run_json(run) |> json_string
+  let assert True = string.contains(s, "\"state\":\"success\"")
+  let assert True = string.contains(s, "\"module_path\":\"ci\"")
 }
 
 pub fn commits_json_test() {

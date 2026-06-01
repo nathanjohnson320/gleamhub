@@ -59,7 +59,7 @@ database_url() ->
 
 reset(_DbUrlBin) ->
   Sql =
-    "TRUNCATE merge_request_comments, merge_requests, protected_branches, "
+    "TRUNCATE pipeline_runs, merge_request_comments, merge_requests, protected_branches, "
     "ssh_public_keys, repositories, organization_members, organizations, users "
     "CASCADE;",
   Root = project_root(),
