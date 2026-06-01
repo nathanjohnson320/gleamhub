@@ -644,7 +644,7 @@ fn detail_view(
         ]),
         merge_status_banner(model, mr, detail.merge_check, detail.pipeline),
       ]),
-      action_buttons(model, mr, detail.merge_check, detail.pipeline),
+      action_buttons(model, mr, detail.merge_check),
     ]),
     error,
     tab_bar(model.tab, detail.pipeline),
@@ -753,15 +753,49 @@ fn checks_summary(pipeline: option.Option(Pipeline)) -> String {
   }
 }
 
+fn rerun_checks_button(pipeline: option.Option(Pipeline)) -> Element(Msg) {
+  let checks_busy = pipeline_is_in_progress(pipeline)
+  button(
+    [
+      attr.type_("button"),
+      attr.class(components.btn_secondary <> " !h-9 shrink-0 !px-4"),
+      attr.disabled(checks_busy),
+      attr.title(case checks_busy {
+        True -> "Wait for the current check run to finish"
+        False -> ""
+      }),
+      event.on_click(RerunChecks),
+    ],
+    [text("Re-run checks")],
+  )
+}
+
+fn checks_tab_header(
+  mr: MergeRequest,
+  pipeline: option.Option(Pipeline),
+) -> Element(Msg) {
+  div([attr.class("mb-4 flex flex-wrap items-center justify-between gap-3")], [
+    p([attr.class("text-sm font-medium text-gh-ink")], [
+      text(checks_summary(pipeline)),
+    ]),
+    case mr.state {
+      "open" -> rerun_checks_button(pipeline)
+      _ -> text("")
+    },
+  ])
+}
+
 fn checks_tab(detail: MergeRequestDetail) -> Element(Msg) {
-  case detail.pipeline {
+  let mr = detail.merge_request
+  let pipeline = detail.pipeline
+  case pipeline {
     option.None ->
       div([attr.class(components.card)], [
+        checks_tab_header(mr, option.None),
         p([attr.class("text-sm text-gh-muted")], [
-          text(checks_summary(option.None)),
-        ]),
-        p([attr.class("mt-2 text-sm text-gh-muted")], [
-          text("Use Re-run checks above after pushing a Dagger module (e.g. ci/dagger.json)."),
+          text(
+            "Re-run checks after pushing a Dagger module (e.g. ci/dagger.json) to trigger a pipeline.",
+          ),
         ]),
       ])
     option.Some(run) -> {
@@ -770,9 +804,7 @@ fn checks_tab(detail: MergeRequestDetail) -> Element(Msg) {
         option.None -> "ci"
       }
       div([attr.class(components.card)], [
-        p([attr.class("mb-4 text-sm font-medium text-gh-ink")], [
-          text(checks_summary(option.Some(run))),
-        ]),
+        checks_tab_header(mr, option.Some(run)),
         div(
           [
             attr.class(
@@ -961,13 +993,7 @@ fn merge_confirm_popover(
   )
 }
 
-fn action_buttons(
-  model: Model,
-  mr: MergeRequest,
-  check: MergeCheck,
-  pipeline: option.Option(Pipeline),
-) -> Element(Msg) {
-  let checks_busy = pipeline_is_in_progress(pipeline)
+fn action_buttons(model: Model, mr: MergeRequest, check: MergeCheck) -> Element(Msg) {
   case mr.state {
     "open" ->
       div([attr.class("relative w-full shrink-0 sm:w-auto")], [
@@ -982,19 +1008,6 @@ fn action_buttons(
               text("Merge as"),
             ]),
             merge_method_select(model),
-            button(
-              [
-                attr.type_("button"),
-                attr.class(components.btn_secondary <> " " <> action_size <> " !px-4"),
-                attr.disabled(checks_busy),
-                attr.title(case checks_busy {
-                  True -> "Wait for the current check run to finish"
-                  False -> ""
-                }),
-                event.on_click(RerunChecks),
-              ],
-              [text("Re-run checks")],
-            ),
             button(
               [
                 attr.type_("button"),
