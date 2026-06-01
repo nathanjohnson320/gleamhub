@@ -45,8 +45,7 @@ pub fn authenticated(
               option.None,
             )
           {
-            Ok(_) ->
-              Ok(web.Context(..ctx, user_id: option.Some(user_id)))
+            Ok(_) -> Ok(web.Context(..ctx, user_id: option.Some(user_id)))
             Error(_) -> Error(wisp.internal_server_error())
           }
         }
@@ -57,7 +56,6 @@ pub fn authenticated(
   }
 }
 
-/// Middleware for authenticating requests coming from clerk (estonian).
 pub fn middleware(
   req: Request,
   ctx: web.Context,
