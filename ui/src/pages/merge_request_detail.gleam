@@ -25,11 +25,8 @@ import clipboard
 import markdown
 import diff_view
 import pipeline_stream
-import poll
 import routes
 import time_format
-
-const pipeline_poll_ms = 5000
 
 pub type Tab {
   Conversation
@@ -67,7 +64,6 @@ pub type Model {
 
 pub type Msg {
   DetailLoaded(Result(MergeRequestDetail, lustre_http.HttpError))
-  DetailPolled(Result(MergeRequestDetail, lustre_http.HttpError))
   CommentsLoaded(Result(List(MrComment), lustre_http.HttpError))
   CommitsLoaded(Result(List(MrCommit), lustre_http.HttpError))
   DiffLoaded(Result(List(DiffFile), lustre_http.HttpError))
@@ -94,7 +90,6 @@ pub type Msg {
   PipelineStreamStarted(fn() -> Nil)
   PipelineStreamUpdate(String)
   PipelineStreamError
-  RefreshDetail
   HashTabChanged(String)
 }
 
@@ -199,20 +194,6 @@ fn detail_pipeline(model: Model) -> option.Option(Pipeline) {
   }
 }
 
-fn pipeline_poll_effect(model: Model) -> Effect(Msg) {
-  case model.tab, pipeline_is_in_progress(detail_pipeline(model)) {
-    Checks, True -> poll.after_ms(RefreshDetail, pipeline_poll_ms)
-    _, _ -> none()
-  }
-}
-
-fn pipeline_live_effect(model: Model, config: Config) -> Effect(Msg) {
-  batch([
-    pipeline_stream_effect(model, config),
-    pipeline_poll_effect(model),
-  ])
-}
-
 fn pipeline_stream_effect(model: Model, config: Config) -> Effect(Msg) {
   case model.tab, model.detail, config.token {
     Checks, option.Some(_), option.Some(token) ->
@@ -310,11 +291,11 @@ fn tab_change(config: Config, model: Model, tab: Tab, sync_hash: Bool) -> #(
         },
       )
     }
-  let live_effect = case tab {
-    Checks -> pipeline_live_effect(model, config)
+  let stream_effect = case tab {
+    Checks -> pipeline_stream_effect(model, config)
     _ -> none()
   }
-  #(model, batch([tab_load(config, model, tab), live_effect]))
+  #(model, batch([tab_load(config, model, tab), stream_effect]))
 }
 
 fn tab_load(config: Config, model: Model, tab: Tab) -> Effect(Msg) {
@@ -368,28 +349,12 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
             error: option.None,
           )
         }
-      #(model, pipeline_live_effect(model, config))
+      let stream = case model.tab {
+        Checks -> pipeline_stream_effect(model, config)
+        _ -> none()
+      }
+      #(model, stream)
     }
-    RefreshDetail -> #(
-      model,
-      lustre_http.get(
-        config,
-        api_base(config, model),
-        lustre_http.expect_json(
-          api.merge_request_detail_decoder(),
-          DetailPolled,
-        ),
-      ),
-    )
-    DetailPolled(Ok(d)) -> #(
-      Model(
-        ..model,
-        detail: option.Some(d),
-        error: option.None,
-      ),
-      pipeline_poll_effect(Model(..model, detail: option.Some(d))),
-    )
-    DetailPolled(Error(_)) -> #(model, none())
     DetailLoaded(Error(_)) -> #(
       Model(..model, loading: False, error: option.Some("Failed to load merge request")),
       none(),
@@ -602,19 +567,25 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
             error: option.None,
           )
         }
-      #(updated, pipeline_live_effect(updated, config))
+      #(updated, pipeline_stream_effect(updated, config))
     }
     PipelineStreamStarted(stop) -> #(
       Model(..model, pipeline_stream_stop: option.Some(stop)),
-      pipeline_poll_effect(Model(..model, pipeline_stream_stop: option.Some(stop))),
-    )
-    PipelineStreamUpdate(json) -> #(
-      apply_pipeline_update(model, json),
       none(),
     )
+    PipelineStreamUpdate(json) -> {
+      let updated = apply_pipeline_update(model, json)
+      #(
+        updated,
+        case pipeline_is_in_progress(detail_pipeline(updated)) {
+          True -> none()
+          False -> load_detail(config, updated)
+        },
+      )
+    }
     PipelineStreamError -> #(
       stop_pipeline_stream(model),
-      pipeline_poll_effect(model),
+      pipeline_stream_effect(model, config),
     )
     ChecksRerun(Error(_)) -> #(
       Model(..model, error: option.Some("Could not re-run checks")),
@@ -829,7 +800,7 @@ fn checks_tab(detail: MergeRequestDetail) -> Element(Msg) {
         case pipeline_is_in_progress(option.Some(run)) {
           True ->
             p([attr.class("mt-3 text-xs text-gh-muted")], [
-              text("Live updates while checks are in progress."),
+              text("Log updates stream live from the server."),
             ])
           False -> text("")
         },

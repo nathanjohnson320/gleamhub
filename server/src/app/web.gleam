@@ -11,7 +11,7 @@ import pog
 import wisp
 import ywt/verify_key.{type VerifyKey}
 
-fn cors() {
+pub fn cors() {
   cors.new()
   |> cors.allow_origin("http://localhost:5173")
   |> cors.allow_origin("http://127.0.0.1:5173")

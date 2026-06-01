@@ -7,6 +7,7 @@ SET
     ELSE finished_at
   END
 WHERE id = $1::uuid
+  AND state = 'running'
 RETURNING
   id::text,
   repository_id::text,

@@ -12,6 +12,7 @@ import gleam/json
 import gleam/list
 import gleam/option
 import gleam/string
+import pog
 import wisp.{type Request, type Response}
 
 fn query_param(req: Request, name: String) -> String {
@@ -127,6 +128,7 @@ pub fn update_job(req: Request, ctx: Context, run_id: String) -> Response {
           pipeline_events.publish_run(ctx.pipeline_events_name, run)
           json_ok(json_api.pipeline_run_json(run), 200)
         }
+        Error(pog.ConstraintViolated(..)) -> wisp.response(409)
         Error(_) -> wisp.internal_server_error()
       }
   }

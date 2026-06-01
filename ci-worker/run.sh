@@ -51,19 +51,35 @@ with open(body_path, "w", encoding="utf-8") as out:
     return
   fi
 
-  if ! curl -s -f -X PATCH \
+  if curl -s -f -X PATCH \
     -H "X-Gleamhub-Internal-Token: $INTERNAL_TOKEN" \
     -H "Content-Type: application/json" \
     -d @"$body_file" \
     "$API_URL/internal/ci/jobs/$job_id" >/dev/null
   then
-    log "failed to update job $job_id (state=$state)"
+    rm -f "$body_file"
+    return 0
   fi
+  log "failed to update job $job_id (state=$state)"
   rm -f "$body_file"
+  return 1
 }
 
 patch_running_log() {
-  patch_job "$1" running "$2"
+  job_id="$1"
+  log_path="$2"
+  if ! patch_job "$job_id" running "$log_path"; then
+    log "job $job_id is no longer running in API (reclaimed or cancelled); stopping worker"
+    if [ -n "$dagger_pid" ] && kill -0 "$dagger_pid" 2>/dev/null; then
+      kill "$dagger_pid" 2>/dev/null || true
+      wait "$dagger_pid" 2>/dev/null || true
+      dagger_pid=""
+    fi
+    job_done=1
+    trap - EXIT INT TERM
+    rm -rf "$checkout" "$log_file"
+    exit 0
+  fi
 }
 
 run_job() {

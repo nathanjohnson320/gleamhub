@@ -362,8 +362,8 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       #(Model(..model, keys:), effect.map(eff, KeysMsg))
     }
     ClerkSessionUpdated(user_json) -> {
-      let model = with_refreshed_session(model, auth.user_from_json(user_json))
-      #(model, route_effect(model.config, model.route))
+      // Refresh Bearer token only — do not re-run route on_load (Clerk fires often).
+      #(with_refreshed_session(model, auth.user_from_json(user_json)), effect.none())
     }
     OpenAccount -> #(
       Model(..model, user_menu_open: False),

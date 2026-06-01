@@ -173,7 +173,7 @@ Enqueue discovers `ci/dagger.json` (or `.dagger/` / `dagger/`) at `commit_sha` i
 ### UI behaviour
 
 - **MR list** — `GET /merge-requests` includes each MR’s latest pipeline summary (`state` only, no log).
-- **MR detail / Checks tab** — initial `pipeline` on `GET .../merge-requests/:n`; while `queued` or `running`, the **Checks** tab subscribes to `GET .../merge-requests/:n/pipeline/stream` (SSE) for live log and state.
+- **MR detail / Checks tab** — initial `pipeline` on `GET .../merge-requests/:n`; while `queued` or `running`, the **Checks** tab uses SSE (`GET .../merge-requests/:n/pipeline/stream`) for live log and state, then one final `GET` when the run finishes (merge gating).
 - Tab choice is preserved in the URL hash (`#checks`, etc.).
 
 ### Quick checks
@@ -219,6 +219,57 @@ MR detail includes:
 ```
 
 `pipeline` is `null` when no run exists yet.
+
+## Troubleshooting stuck checks
+
+**Symptoms:** Checks stay on “running” for many minutes; the log stops on Dagger lines such as `loading type definitions` or Postgres `checkpoint` messages.
+
+**What is usually happening:**
+
+1. **Buffered logs** — Dagger only flushes `withExec` output when a step finishes. Long `mix deps.get` / `mix test` steps can look frozen even while work continues.
+2. **Hung step** — If the Dagger engine log shows `starting container` for `mix deps.get` but no matching `container done` for several minutes, the Elixir container is stuck (network to Hex, resource limits, etc.).
+3. **Stale UI after reclaim** — Runs in `running` for more than 5 minutes are marked `failure` in Postgres. An old worker process could keep PATCHing `running` and confuse the UI until it is restarted.
+
+**What to do:**
+
+```bash
+# Stop the in-flight Dagger process and pick up the next queued job
+docker compose -f docker-compose.ci.yml restart ci-worker
+
+# Confirm the latest run state (should be failure after reclaim, or success after a good run)
+docker exec gleamhub-postgres-1 psql -U postgres -d gleamhub \
+  -c "SELECT state, started_at, finished_at FROM pipeline_runs ORDER BY created_at DESC LIMIT 3;"
+```
+
+Then use **Re-run checks** on the MR. In repo `ci/` modules, split long shell steps (e.g. separate `withExec` for `mix deps.get` and `mix test`) and wrap slow commands with `timeout` so failures surface in the log.
+
+### Phoenix / Mix logs stop at “creating hex-2.4.2”
+
+That line is the **end** of `mix local.hex`, not the hang point. Your `ci` module likely runs one shell step:
+
+```sh
+mix local.hex --force && mix local.rebar --force && mix deps.get
+```
+
+After the hex archive message, **`mix deps.get` runs with little or no output** until the whole step finishes. Dagger only streams new log lines when the `withExec` completes, so the Checks tab looks frozen on hex even while deps are downloading or compiling (often 1–10+ minutes on a cold run).
+
+Successful runs on the same commit can finish in ~30s when Dagger reuses cached layers; after engine restarts or failures, the mix step runs cold again and looks “stuck” every time.
+
+**Recommended `ci/src/index.ts` changes (in your repo):**
+
+1. **Drop `mix local.hex` / `mix local.rebar`** — the `hexpm/elixir` image already ships Mix; re-installing hits `hex.pm` over the network and adds noise.
+2. **Split `withExec` steps** — separate waits, `mix deps.get`, and `mix test` so logs and Dagger cache update per step.
+3. **Set `MIX_ENV=test`** and optional timeouts, e.g. `HEX_HTTP_TIMEOUT=300`, for clearer failures inside the container.
+
+Example shape:
+
+```typescript
+.withEnvVariable("MIX_ENV", "test")
+.withExec(["sh", "-c", "echo '==> mix deps.get' && mix deps.get"])
+.withExec(["sh", "-c", "echo '==> mix test' && mix test"])
+```
+
+On **Docker Desktop / OrbStack (Apple Silicon)**, intermittent hangs in `mix deps.get` are often container DNS or IPv6/`httpc` behaviour; if deps never finish, try `docker compose -f docker-compose.ci.yml restart dagger-engine` before re-running checks.
 
 ## Security note
 

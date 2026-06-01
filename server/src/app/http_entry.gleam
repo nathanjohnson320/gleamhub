@@ -1,6 +1,7 @@
 import app/routes/clerk
 import app/routes/pipeline_stream_routes
-import app/web.{type Context}
+import app/web.{type Context, cors}
+import cors_builder
 import exception
 import gleam/bytes_tree
 import gleam/http/request.{type Request as HttpRequest}
@@ -52,18 +53,20 @@ pub fn handler(
 
     case pipeline_stream_target(wisp.path_segments(wisp_req)) {
       option.Some(#(org, repo, num)) ->
-        case clerk.authenticated(wisp_req, ctx) {
-          Error(resp) -> mist_response(resp)
-          Ok(auth_ctx) ->
-            pipeline_stream_routes.serve(
-              request,
-              wisp_req,
-              auth_ctx,
-              org,
-              repo,
-              num,
-            )
-        }
+        cors_builder.mist_middleware(request, cors(), fn(_) {
+          case clerk.authenticated(wisp_req, ctx) {
+            Error(resp) -> mist_response(resp)
+            Ok(auth_ctx) ->
+              pipeline_stream_routes.serve(
+                request,
+                wisp_req,
+                auth_ctx,
+                org,
+                repo,
+                num,
+              )
+          }
+        })
       option.None ->
         handle_request(wisp_req, ctx)
         |> mist_response

@@ -2,7 +2,8 @@ import app/database
 import app/json_api
 import app/org_access
 import app/pipeline_events
-import app/web.{type Context}
+import app/web.{type Context, cors}
+import cors_builder
 import gleam/bytes_tree
 import gleam/dynamic/decode
 import gleam/erlang/process
@@ -48,21 +49,41 @@ pub fn serve(
   case wisp_req.method {
     http.Get ->
       case org_access.require_member(ctx, user_id(ctx), org_slug) {
-        Error(_) -> error_response(403)
+        Error(_) -> error_response(mist_req, 403)
         Ok(_) ->
           case database.get_merge_request(ctx.repo(), org_slug, repo_name, number) {
-            Ok(option.None) -> error_response(404)
-            Error(_) -> error_response(500)
+            Ok(option.None) -> error_response(mist_req, 404)
+            Error(_) -> error_response(mist_req, 500)
             Ok(option.Some(mr)) -> start_stream(mist_req, ctx, mr)
           }
       }
-    _ -> error_response(405)
+    _ -> error_response(mist_req, 405)
   }
 }
 
-fn error_response(status: Int) -> http_response.Response(ResponseData) {
+fn request_origin(mist_req: Request(Connection)) -> String {
+  case request.get_header(mist_req, "origin") {
+    Ok(origin) -> origin
+    Error(_) -> ""
+  }
+}
+
+/// Mist `server_sent_events` writes `initial_response` headers to the socket
+/// immediately; CORS must be on that response, not only on middleware afterward.
+fn with_cors(
+  mist_req: Request(Connection),
+  response: http_response.Response(ResponseData),
+) -> http_response.Response(ResponseData) {
+  cors_builder.set_cors_multiple_origin(response, cors(), request_origin(mist_req))
+}
+
+fn error_response(
+  mist_req: Request(Connection),
+  status: Int,
+) -> http_response.Response(ResponseData) {
   http_response.new(status)
   |> http_response.set_body(mist.Bytes(bytes_tree.new()))
+  |> with_cors(mist_req, _)
 }
 
 fn start_stream(
@@ -70,7 +91,10 @@ fn start_stream(
   ctx: Context,
   mr: database.MergeRequestRow,
 ) -> http_response.Response(ResponseData) {
-  let initial = http_response.new(200)
+  let initial =
+    http_response.new(200)
+    |> http_response.set_body(mist.Bytes(bytes_tree.new()))
+    |> with_cors(mist_req, _)
 
   mist.server_sent_events(
     mist_req,
