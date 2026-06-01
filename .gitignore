@@ -20,3 +20,4 @@ credentials.json
 ui/.env.clerk-snippet
 server/data/
 
+.dexter.db*
