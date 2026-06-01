@@ -295,6 +295,46 @@ pub fn merge_request_json_with_timestamps_test() {
   let assert True = string.contains(s, "\"description\":\"Details\"")
 }
 
+pub fn merge_requests_list_json_includes_pipeline_test() {
+  let mr =
+    MergeRequestRow(
+      id: "mr-1",
+      number: 1,
+      title: "T",
+      description: option.None,
+      author_user_id: "u1",
+      source_branch: "a",
+      target_branch: "main",
+      state: "open",
+      merge_commit_sha: option.None,
+      merged_by_user_id: option.None,
+      merged_at: option.None,
+      closed_at: option.None,
+      created_at: "1",
+      updated_at: "1",
+    )
+  let run =
+    PipelineRunRow(
+      id: "run-1",
+      repository_id: "repo-1",
+      merge_request_id: "mr-1",
+      commit_sha: "abc",
+      module_path: "ci",
+      entry_function: "ci",
+      state: "success",
+      trigger: "push",
+      log_text: "log",
+      created_at: "1",
+      started_at: option.Some("2"),
+      finished_at: option.Some("3"),
+    )
+  let s =
+    json_api.merge_requests_list_json([#(mr, option.Some(run))])
+    |> json_string
+  let assert True = string.contains(s, "\"state\":\"success\"")
+  let assert True = string.contains(s, "\"pipeline\"")
+}
+
 pub fn merge_requests_json_test() {
   let mr =
     MergeRequestRow(

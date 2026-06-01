@@ -1,5 +1,7 @@
 import app/clerk_api.{type Client}
+import app/pipeline_events
 import cors_builder as cors
+import gleam/erlang/process
 import gleam/bool
 import gleam/http
 import gleam/list
@@ -35,6 +37,7 @@ pub type Context {
     clerk: option.Option(Client),
     internal_api_token: String,
     clerk_issuer: option.Option(String),
+    pipeline_events_name: process.Name(pipeline_events.Message),
   )
 }
 

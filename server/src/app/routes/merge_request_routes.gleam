@@ -178,8 +178,25 @@ pub fn list_merge_requests(
     Error(r) -> r
     Ok(_) ->
       with_repo(ctx, org_slug, repo_name, fn(_repo, _dir) {
+        database.reclaim_stale_pipeline_runs(ctx.repo())
         case database.list_merge_requests(ctx.repo(), org_slug, repo_name) {
-          Ok(mrs) -> json_ok(json_api.merge_requests_json(mrs), 200)
+          Ok(mrs) -> {
+            let items =
+              list.map(mrs, fn(mr) {
+                let pipeline =
+                  case
+                    database.get_latest_pipeline_run_optional(
+                      ctx.repo(),
+                      mr.id,
+                    )
+                  {
+                    Ok(run) -> run
+                    Error(_) -> option.None
+                  }
+                #(mr, pipeline)
+              })
+            json_ok(json_api.merge_requests_list_json(items), 200)
+          }
           Error(_) -> wisp.internal_server_error()
         }
       })
@@ -249,6 +266,7 @@ pub fn create_merge_request(
                               Ok(mr) -> {
                                 let _ =
                                   ci_pipeline.enqueue_for_merge_request(
+                                    ctx.pipeline_events_name,
                                     ctx.repo(),
                                     repo.id,
                                     mr.id,
@@ -601,6 +619,7 @@ pub fn rerun_checks(
                           True ->
                             case
                               ci_pipeline.enqueue_for_merge_request(
+                                ctx.pipeline_events_name,
                                 ctx.repo(),
                                 repo.id,
                                 mr.id,

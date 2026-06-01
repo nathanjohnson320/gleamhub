@@ -1,4 +1,6 @@
+import app/ci_long_poll
 import app/ci_pipeline
+import app/pipeline_events
 import app/database
 import app/git_exec
 import app/json_api
@@ -61,6 +63,7 @@ pub fn enqueue(req: Request, ctx: Context) -> Response {
             Ok(git_dir) ->
               case
                 ci_pipeline.enqueue_for_branch_push(
+                  ctx.pipeline_events_name,
                   ctx.repo(),
                   org,
                   repo,
@@ -79,15 +82,27 @@ pub fn enqueue(req: Request, ctx: Context) -> Response {
 
 pub fn next_job(req: Request, ctx: Context) -> Response {
   use <- wisp.require_method(req, http.Get)
-  case database.claim_next_pipeline_job(ctx.repo()) {
+  let timeout_secs = ci_long_poll.timeout_secs_from_query(query_param(req, "timeout"))
+  case ci_long_poll.wait_for_job(ctx.repo(), timeout_secs) {
     Ok(option.None) -> wisp.response(204)
     Error(_) -> wisp.internal_server_error()
-    Ok(option.Some(claimed)) ->
+    Ok(option.Some(claimed)) -> {
+      case
+        database.get_latest_pipeline_run_optional(
+          ctx.repo(),
+          claimed.merge_request_id,
+        )
+      {
+        Ok(option.Some(run)) ->
+          pipeline_events.publish_run(ctx.pipeline_events_name, run)
+        _ -> Nil
+      }
       case database.get_pipeline_run_job(ctx.repo(), claimed.id) {
         Ok(option.Some(job)) -> json_ok(job_json(job), 200)
         Ok(option.None) -> wisp.internal_server_error()
         Error(_) -> wisp.internal_server_error()
       }
+    }
   }
 }
 
@@ -108,8 +123,10 @@ pub fn update_job(req: Request, ctx: Context, run_id: String) -> Response {
         state,
         ci_pipeline.truncate_log(log),
       ) {
-        Ok(run) ->
+        Ok(run) -> {
+          pipeline_events.publish_run(ctx.pipeline_events_name, run)
           json_ok(json_api.pipeline_run_json(run), 200)
+        }
         Error(_) -> wisp.internal_server_error()
       }
   }

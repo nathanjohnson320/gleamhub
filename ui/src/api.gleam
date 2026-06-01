@@ -199,6 +199,7 @@ pub type MergeRequest {
     merged_at: option.Option(String),
     closed_at: option.Option(String),
     created_at: String,
+    pipeline: option.Option(Pipeline),
   )
 }
 
@@ -295,6 +296,11 @@ pub fn merge_request_decoder() -> decode.Decoder(MergeRequest) {
   use merged_at <- decode.field("merged_at", decode.optional(decode.string))
   use closed_at <- decode.field("closed_at", decode.optional(decode.string))
   use created_at <- decode.field("created_at", decode.string)
+  use pipeline <- decode.optional_field(
+    "pipeline",
+    option.None,
+    decode.optional(pipeline_decoder()),
+  )
   decode.success(MergeRequest(
     id:,
     number:,
@@ -308,6 +314,7 @@ pub fn merge_request_decoder() -> decode.Decoder(MergeRequest) {
     merged_at:,
     closed_at:,
     created_at:,
+    pipeline:,
   ))
 }
 

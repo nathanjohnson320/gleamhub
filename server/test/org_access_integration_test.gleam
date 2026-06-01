@@ -1,6 +1,8 @@
 import app/database
 import app/org_access
+import app/pipeline_events
 import app/web
+import gleam/erlang/process
 import database_integration_fixtures as fixtures
 import db_test_support
 import gleam/option
@@ -12,6 +14,8 @@ import ywt/verify_key
 fn test_context(repo: fn() -> pog.Connection) -> web.Context {
   let sign = ywt.generate_key(algorithm.rs256)
   let clerk_keys = [verify_key.derived(sign)]
+  let pipeline_events_name = process.new_name("gleamhub.test.pipeline_events")
+  let assert Ok(_) = pipeline_events.start(pipeline_events_name)
   web.Context(
     clerk_keys:,
     static_directory: "",
@@ -22,6 +26,7 @@ fn test_context(repo: fn() -> pog.Connection) -> web.Context {
     clerk: option.None,
     internal_api_token: "test-internal-token",
     clerk_issuer: option.None,
+    pipeline_events_name:,
   )
 }
 

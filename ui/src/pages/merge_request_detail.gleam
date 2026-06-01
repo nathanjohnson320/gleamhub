@@ -3,6 +3,7 @@ import api.{
   type MrComment, type MrCommit, type Pipeline,
 }
 import ci_log
+import ci_status
 import components
 import config.{type Config}
 import gleam/int
@@ -12,7 +13,7 @@ import gleam/json
 import gleam/string
 import gleam/uri
 import lustre/attribute as attr
-import lustre/effect.{type Effect, batch, none}
+import lustre/effect.{type Effect, batch, from, none}
 import lustre/element.{type Element, text, unsafe_raw_html}
 import lustre/element/html.{
   a, button, div, form, h2, h3, input, label, li, ol, option, p, select, span,
@@ -23,6 +24,7 @@ import lustre_http
 import clipboard
 import markdown
 import diff_view
+import pipeline_stream
 import poll
 import routes
 import time_format
@@ -59,11 +61,13 @@ pub type Model {
     copied_commit_sha: option.Option(String),
     loading_patch: Bool,
     error: option.Option(String),
+    pipeline_stream_stop: option.Option(fn() -> Nil),
   )
 }
 
 pub type Msg {
   DetailLoaded(Result(MergeRequestDetail, lustre_http.HttpError))
+  DetailPolled(Result(MergeRequestDetail, lustre_http.HttpError))
   CommentsLoaded(Result(List(MrComment), lustre_http.HttpError))
   CommitsLoaded(Result(List(MrCommit), lustre_http.HttpError))
   DiffLoaded(Result(List(DiffFile), lustre_http.HttpError))
@@ -87,15 +91,47 @@ pub type Msg {
   Closed(Result(MergeRequest, lustre_http.HttpError))
   RerunChecks
   ChecksRerun(Result(api.Pipeline, lustre_http.HttpError))
+  PipelineStreamStarted(fn() -> Nil)
+  PipelineStreamUpdate(String)
+  PipelineStreamError
   RefreshDetail
+  HashTabChanged(String)
+}
+
+@external(javascript, "../mr_tab_ffi.js", "read_mr_tab_hash")
+fn read_mr_tab_hash() -> String
+
+@external(javascript, "../mr_tab_ffi.js", "set_mr_tab_hash")
+fn set_mr_tab_hash(segment: String) -> Nil
+
+@external(javascript, "../mr_tab_ffi.js", "subscribe_mr_tab_hash")
+fn subscribe_mr_tab_hash(on_change: fn(String) -> Nil) -> Nil
+
+fn tab_hash_name(tab: Tab) -> String {
+  case tab {
+    Conversation -> "conversation"
+    Checks -> "checks"
+    Commits -> "commits"
+    Changes -> "changes"
+  }
+}
+
+fn tab_from_hash_name(name: String) -> Tab {
+  case string.lowercase(name) {
+    "checks" -> Checks
+    "commits" -> Commits
+    "changes" -> Changes
+    _ -> Conversation
+  }
 }
 
 pub fn init(org_slug: String, repo_name: String, number: Int) -> Model {
+  let tab = tab_from_hash_name(read_mr_tab_hash())
   Model(
     org_slug:,
     repo_name:,
     number:,
-    tab: Conversation,
+    tab:,
     detail: option.None,
     comments: [],
     commits: [],
@@ -113,6 +149,7 @@ pub fn init(org_slug: String, repo_name: String, number: Int) -> Model {
     copied_commit_sha: option.None,
     loading_patch: False,
     error: option.None,
+    pipeline_stream_stop: option.None,
   )
 }
 
@@ -134,14 +171,85 @@ fn load_detail(config: Config, model: Model) -> Effect(Msg) {
   )
 }
 
-fn pipeline_poll_effect(model: Model) -> Effect(Msg) {
+fn pipeline_stream_url(config: Config, model: Model) -> String {
+  config.api_url
+  <> "/api/orgs/"
+  <> model.org_slug
+  <> "/repos/"
+  <> model.repo_name
+  <> "/merge-requests/"
+  <> int.to_string(model.number)
+  <> "/pipeline/stream"
+}
+
+fn stop_pipeline_stream(model: Model) -> Model {
+  case model.pipeline_stream_stop {
+    option.Some(stop) -> {
+      stop()
+      Model(..model, pipeline_stream_stop: option.None)
+    }
+    option.None -> model
+  }
+}
+
+fn detail_pipeline(model: Model) -> option.Option(Pipeline) {
   case model.detail {
-    option.Some(detail) ->
-      case pipeline_is_in_progress(detail.pipeline) {
-        True -> poll.after_ms(RefreshDetail, pipeline_poll_ms)
+    option.Some(d) -> d.pipeline
+    option.None -> option.None
+  }
+}
+
+fn pipeline_poll_effect(model: Model) -> Effect(Msg) {
+  case model.tab, pipeline_is_in_progress(detail_pipeline(model)) {
+    Checks, True -> poll.after_ms(RefreshDetail, pipeline_poll_ms)
+    _, _ -> none()
+  }
+}
+
+fn pipeline_live_effect(model: Model, config: Config) -> Effect(Msg) {
+  batch([
+    pipeline_stream_effect(model, config),
+    pipeline_poll_effect(model),
+  ])
+}
+
+fn pipeline_stream_effect(model: Model, config: Config) -> Effect(Msg) {
+  case model.tab, model.detail, config.token {
+    Checks, option.Some(_), option.Some(token) ->
+      case pipeline_is_in_progress(detail_pipeline(model)) {
+        True ->
+          from(fn(dispatch) {
+            let abort =
+              pipeline_stream.subscribe(
+                pipeline_stream_url(config, model),
+                token,
+                fn(json) { dispatch(PipelineStreamUpdate(json)) },
+                fn() { dispatch(PipelineStreamError) },
+              )
+            dispatch(PipelineStreamStarted(abort))
+          })
         False -> none()
       }
-    option.None -> none()
+    _, _, _ -> none()
+  }
+}
+
+fn apply_pipeline_update(model: Model, json: String) -> Model {
+  case json.parse(json, api.pipeline_decoder()) {
+    Ok(pipeline) -> {
+      let model =
+        Model(
+          ..model,
+          detail: option.map(model.detail, fn(d) {
+            api.MergeRequestDetail(..d, pipeline: option.Some(pipeline))
+          }),
+        )
+      case pipeline_is_in_progress(option.Some(pipeline)) {
+        True -> model
+        False -> stop_pipeline_stream(model)
+      }
+    }
+    Error(_) -> model
   }
 }
 
@@ -155,13 +263,58 @@ fn pipeline_is_in_progress(pipeline: option.Option(Pipeline)) -> Bool {
 pub fn on_load(config: Config, model: Model) -> Effect(Msg) {
   let base = api_base(config, model)
   batch([
+    from(fn(dispatch) {
+      subscribe_mr_tab_hash(fn(name) { dispatch(HashTabChanged(name)) })
+    }),
     load_detail(config, model),
     lustre_http.get(
       config,
       base <> "/comments",
       lustre_http.expect_json(api.mr_comments_decoder(), CommentsLoaded),
     ),
+    tab_load(config, model, model.tab),
   ])
+}
+
+fn tab_change(config: Config, model: Model, tab: Tab, sync_hash: Bool) -> #(
+  Model,
+  Effect(Msg),
+) {
+  let _ = case sync_hash {
+    True -> set_mr_tab_hash(tab_hash_name(tab))
+    False -> Nil
+  }
+  let commits_loading = tab == Commits && model.commits == []
+  let clear_inline = case tab {
+    Conversation | Checks | Commits -> True
+    Changes -> False
+  }
+  let model =
+    stop_pipeline_stream(model)
+    |> fn(m) {
+      Model(
+        ..m,
+        tab:,
+        commits_loading:,
+        comment_file: case clear_inline {
+          True -> option.None
+          False -> m.comment_file
+        },
+        comment_line: case clear_inline {
+          True -> option.None
+          False -> m.comment_line
+        },
+        comment_body: case clear_inline {
+          True -> ""
+          False -> m.comment_body
+        },
+      )
+    }
+  let live_effect = case tab {
+    Checks -> pipeline_live_effect(model, config)
+    _ -> none()
+  }
+  #(model, batch([tab_load(config, model, tab), live_effect]))
 }
 
 fn tab_load(config: Config, model: Model, tab: Tab) -> Effect(Msg) {
@@ -204,11 +357,39 @@ fn tab_load(config: Config, model: Model, tab: Tab) -> Effect(Msg) {
 
 pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
   case msg {
-    DetailLoaded(Ok(d)) -> #(
-      Model(..model, detail: option.Some(d), loading: False, error: option.None),
+    DetailLoaded(Ok(d)) -> {
+      let model =
+        stop_pipeline_stream(model)
+        |> fn(m) {
+          Model(
+            ..m,
+            detail: option.Some(d),
+            loading: False,
+            error: option.None,
+          )
+        }
+      #(model, pipeline_live_effect(model, config))
+    }
+    RefreshDetail -> #(
+      model,
+      lustre_http.get(
+        config,
+        api_base(config, model),
+        lustre_http.expect_json(
+          api.merge_request_detail_decoder(),
+          DetailPolled,
+        ),
+      ),
+    )
+    DetailPolled(Ok(d)) -> #(
+      Model(
+        ..model,
+        detail: option.Some(d),
+        error: option.None,
+      ),
       pipeline_poll_effect(Model(..model, detail: option.Some(d))),
     )
-    RefreshDetail -> #(model, load_detail(config, model))
+    DetailPolled(Error(_)) -> #(model, none())
     DetailLoaded(Error(_)) -> #(
       Model(..model, loading: False, error: option.Some("Failed to load merge request")),
       none(),
@@ -242,34 +423,13 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
       Model(..model, loading_patch: False, error: option.Some("Failed to load patch")),
       none(),
     )
-    TabChanged(tab) -> {
-      let commits_loading = tab == Commits && model.commits == []
-      let clear_inline = case tab {
-        Conversation | Checks | Commits -> True
-        Changes -> False
+    TabChanged(tab) -> tab_change(config, model, tab, True)
+    HashTabChanged(name) -> {
+      let tab = tab_from_hash_name(name)
+      case tab == model.tab {
+        True -> #(model, none())
+        False -> tab_change(config, model, tab, False)
       }
-      let model =
-        Model(
-          ..model,
-          tab:,
-          commits_loading:,
-          comment_file: case clear_inline {
-            True -> option.None
-            False -> model.comment_file
-          },
-          comment_line: case clear_inline {
-            True -> option.None
-            False -> model.comment_line
-          },
-          comment_body: case clear_inline {
-            True -> ""
-            False -> model.comment_body
-          },
-        )
-      #(
-        model,
-        tab_load(config, model, tab),
-      )
     }
     CopyCommitSha(sha) -> {
       let _ = clipboard.copy(sha)
@@ -432,15 +592,30 @@ pub fn update(msg: Msg, model: Model, config: Config) -> #(Model, Effect(Msg)) {
     )
     ChecksRerun(Ok(pipeline)) -> {
       let updated =
-        Model(
-          ..model,
-          detail: option.map(model.detail, fn(d) {
-            api.MergeRequestDetail(..d, pipeline: option.Some(pipeline))
-          }),
-          error: option.None,
-        )
-      #(updated, pipeline_poll_effect(updated))
+        stop_pipeline_stream(model)
+        |> fn(m) {
+          Model(
+            ..m,
+            detail: option.map(m.detail, fn(d) {
+              api.MergeRequestDetail(..d, pipeline: option.Some(pipeline))
+            }),
+            error: option.None,
+          )
+        }
+      #(updated, pipeline_live_effect(updated, config))
     }
+    PipelineStreamStarted(stop) -> #(
+      Model(..model, pipeline_stream_stop: option.Some(stop)),
+      pipeline_poll_effect(Model(..model, pipeline_stream_stop: option.Some(stop))),
+    )
+    PipelineStreamUpdate(json) -> #(
+      apply_pipeline_update(model, json),
+      none(),
+    )
+    PipelineStreamError -> #(
+      stop_pipeline_stream(model),
+      pipeline_poll_effect(model),
+    )
     ChecksRerun(Error(_)) -> #(
       Model(..model, error: option.Some("Could not re-run checks")),
       none(),
@@ -588,39 +763,8 @@ fn pipeline_status_detail(pipeline: Pipeline) -> String {
   }
 }
 
-fn checks_status_title(state: String) -> String {
-  case state {
-    "success" -> "Passed"
-    "failure" -> "Failed"
-    "running" -> "Running"
-    "queued" -> "Queued"
-    "skipped" -> "Skipped"
-    _ -> state
-  }
-}
-
-/// Colorblind-friendly status disc (blue pass, red fail, light blue running).
 fn checks_status_circle(state: String, size: String, animated: Bool) -> Element(Msg) {
-  let motion = case animated {
-    False -> ""
-    True ->
-      case state {
-        "running" | "queued" -> " animate-pulse"
-        _ -> ""
-      }
-  }
-  let classes = case state {
-    "success" ->
-      size <> " shrink-0 rounded-full bg-blue-600 ring-2 ring-blue-800/30" <> motion
-    "failure" ->
-      size <> " shrink-0 rounded-full bg-red-600 ring-2 ring-red-800/30" <> motion
-    "running" | "queued" ->
-      size <> " shrink-0 rounded-full bg-sky-300 ring-2 ring-sky-600" <> motion
-    "skipped" ->
-      size <> " shrink-0 rounded-full bg-slate-400 ring-2 ring-slate-500/40" <> motion
-    _ -> size <> " shrink-0 rounded-full bg-slate-400" <> motion
-  }
-  span([attr.class(classes), attr.title(checks_status_title(state))], [])
+  ci_status.status_circle(state, size, animated)
 }
 
 fn checks_summary(pipeline: option.Option(Pipeline)) -> String {
@@ -685,7 +829,7 @@ fn checks_tab(detail: MergeRequestDetail) -> Element(Msg) {
         case pipeline_is_in_progress(option.Some(run)) {
           True ->
             p([attr.class("mt-3 text-xs text-gh-muted")], [
-              text("This page refreshes every few seconds while checks are in progress."),
+              text("Live updates while checks are in progress."),
             ])
           False -> text("")
         },
@@ -933,7 +1077,7 @@ fn tab_bar(active: Tab, pipeline: option.Option(Pipeline)) -> Element(Msg) {
         "border-b-2 border-transparent px-4 py-2 text-sm font-medium text-gh-muted hover:text-gh-ink"
     }
     let status_icon = case status {
-      option.Some(state) -> checks_status_circle(state, "h-2.5 w-2.5", False)
+      option.Some(state) -> ci_status.status_circle(state, "h-2.5 w-2.5", False)
       option.None -> text("")
     }
     button(

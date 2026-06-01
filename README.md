@@ -44,7 +44,7 @@ Sign in → **Organizations** → create an org → add a repo → **SSH keys** 
 Merge-request pipelines are **not** started by `docker compose up` alone. After steps 2–3 above (Postgres, git-ssh, and `gleam run` on the host), start the CI stack:
 
 ```bash
-# from repo root — Dagger engine + worker that polls the API
+# from repo root — Dagger engine + worker (long-polls the API for jobs)
 docker compose -f docker-compose.ci.yml up --build -d
 ```
 
@@ -56,7 +56,7 @@ docker compose -f docker-compose.ci.yml up --build -d
 
 Keep **`INTERNAL_API_TOKEN`** the same in `/.env` and `server/.env` (the examples default to `dev-internal-token-change-me`). The worker calls the API at `http://host.docker.internal:9999` by default. On **Linux**, if jobs never run, set `GLEAMHUB_API_URL=http://172.17.0.1:9999` in `/.env` and restart the CI stack.
 
-In a hosted repo, commit a Dagger module (e.g. `ci/dagger.json` with a `ci` function). Open a merge request or push to the MR source branch; `post-receive` enqueues a run and status appears on the MR page. Test the module alone with `dagger call -m ./ci ci --source=.` — see [docs/ci-platform.md](docs/ci-platform.md) and [Merge requests](#merge-requests-same-repo).
+In a hosted repo, commit a Dagger module (e.g. `ci/dagger.json` with a `ci` function). Open a merge request or push to the MR source branch; `post-receive` enqueues a run and status appears on the MR page (live log on the **Checks** tab via SSE). Test the module alone with `dagger call -m ./ci ci --source=.` — see [docs/ci-platform.md](docs/ci-platform.md) (including [how it works end to end](docs/ci-platform.md#how-it-works-end-to-end)) and [Merge requests](#merge-requests-same-repo).
 
 ### Clerk (only if example keys do not work)
 

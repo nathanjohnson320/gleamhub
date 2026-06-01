@@ -1,7 +1,0 @@
-{
-  "name": "demo-ci",
-  "engineVersion": "v0.21.3",
-  "sdk": {
-    "source": "typescript"
-  }
-}

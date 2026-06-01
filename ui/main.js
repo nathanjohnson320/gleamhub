@@ -113,11 +113,14 @@ async function init() {
     }
     app.innerHTML = `<div id="gleam-root"></div>`;
     const pathname = window.location.pathname || "/";
+    const apiUrl = import.meta.env.PROD
+      ? window.location.origin
+      : (import.meta.env.VITE_GLEAMHUB_API_URL ?? "http://localhost:9999");
     main(
       pathname,
       "#gleam-root",
       userJsonForGleam(user, token),
-      window.location.origin,
+      apiUrl,
     );
   }
 

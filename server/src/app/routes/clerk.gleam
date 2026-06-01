@@ -22,12 +22,10 @@ fn auth_claims(ctx: web.Context) -> List(claim.Claim) {
   }
 }
 
-/// Middleware for authenticating requests coming from clerk (estonian).
-pub fn middleware(
+pub fn authenticated(
   req: Request,
   ctx: web.Context,
-  handle_request: fn(web.Context) -> Response,
-) -> Response {
+) -> Result(web.Context, Response) {
   case request.get_header(req, "authorization") {
     Ok("Bearer " <> token) -> {
       let decoded =
@@ -47,17 +45,26 @@ pub fn middleware(
               option.None,
             )
           {
-            Ok(_) -> {
-              let ctx =
-                web.Context(..ctx, user_id: option.Some(user_id))
-              handle_request(ctx)
-            }
-            Error(_) -> wisp.internal_server_error()
+            Ok(_) ->
+              Ok(web.Context(..ctx, user_id: option.Some(user_id)))
+            Error(_) -> Error(wisp.internal_server_error())
           }
         }
-        Error(_) -> wisp.response(401)
+        Error(_) -> Error(wisp.response(401))
       }
     }
-    _ -> wisp.response(401)
+    _ -> Error(wisp.response(401))
+  }
+}
+
+/// Middleware for authenticating requests coming from clerk (estonian).
+pub fn middleware(
+  req: Request,
+  ctx: web.Context,
+  handle_request: fn(web.Context) -> Response,
+) -> Response {
+  case authenticated(req, ctx) {
+    Ok(ctx) -> handle_request(ctx)
+    Error(resp) -> resp
   }
 }

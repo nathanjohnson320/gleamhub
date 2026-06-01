@@ -4,6 +4,7 @@ set -eu
 API_URL="${GLEAMHUB_API_URL:-http://host.docker.internal:9999}"
 INTERNAL_TOKEN="${INTERNAL_API_TOKEN:?missing INTERNAL_API_TOKEN}"
 REPOS_ROOT="${GIT_REPOS_ROOT:-/data/repos}"
+LONG_POLL_TIMEOUT="${CI_LONG_POLL_TIMEOUT:-55}"
 POLL_SECONDS="${CI_POLL_SECONDS:-5}"
 LOG_PATCH_SECONDS="${CI_LOG_PATCH_SECONDS:-3}"
 DAGGER_ENGINE_HOST="${_EXPERIMENTAL_DAGGER_RUNNER_HOST:-container://gleamhub-dagger-engine}"
@@ -169,12 +170,13 @@ run_job() {
   log "finished job $job_id for $org/$repo@$commit_sha ($exit_code)"
 }
 
-log "polling $API_URL every ${POLL_SECONDS}s (log patch every ${LOG_PATCH_SECONDS}s)"
+log "long-polling $API_URL/internal/ci/jobs/next (timeout ${LONG_POLL_TIMEOUT}s, log patch every ${LOG_PATCH_SECONDS}s)"
 
 while true; do
   status=$(curl -s -o /tmp/gleamhub-ci-job.json -w '%{http_code}' \
+    --max-time "$((LONG_POLL_TIMEOUT + 10))" \
     -H "X-Gleamhub-Internal-Token: $INTERNAL_TOKEN" \
-    "$API_URL/internal/ci/jobs/next")
+    "$API_URL/internal/ci/jobs/next?timeout=$LONG_POLL_TIMEOUT")
 
   if [ "$status" = "200" ]; then
     run_job "$(cat /tmp/gleamhub-ci-job.json)"
@@ -182,7 +184,6 @@ while true; do
     :
   else
     log "jobs/next returned HTTP $status"
+    sleep "$POLL_SECONDS"
   fi
-
-  sleep "$POLL_SECONDS"
 done

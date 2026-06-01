@@ -1,5 +1,7 @@
 import app/clerk_api
 import app/clerk_jwks
+import app/http_entry
+import app/pipeline_events
 import app/router
 import app/web.{Context}
 import dot_env
@@ -11,7 +13,6 @@ import mist
 import pog
 import simplifile
 import wisp
-import wisp/wisp_mist
 const app_name = "server"
 
 pub fn main() {
@@ -48,6 +49,7 @@ pub fn main() {
   }
 
   let pool_name = process.new_name(app_name)
+  let pipeline_events_name = process.new_name("gleamhub.pipeline_events")
   let assert Ok(db_config) = pog.url_config(pool_name, db_url)
 
   let db =
@@ -66,12 +68,13 @@ pub fn main() {
       clerk: clerk_api.client_from_env(),
       internal_api_token: internal_api_token,
       clerk_issuer: clerk_issuer,
+      pipeline_events_name: pipeline_events_name,
     )
 
-  let handler = router.handle_request(_, ctx)
+  let handler = http_entry.handler(router.handle_request, secret_key_base, ctx)
 
   let web =
-    wisp_mist.handler(handler, secret_key_base)
+    handler
     |> mist.new
     |> mist.bind("0.0.0.0")
     |> mist.port(port)
@@ -80,6 +83,7 @@ pub fn main() {
   let assert Ok(_) =
     supervisor.new(supervisor.RestForOne)
     |> supervisor.add(db)
+    |> supervisor.add(pipeline_events.supervised(pipeline_events_name))
     |> supervisor.add(web)
     |> supervisor.start
 

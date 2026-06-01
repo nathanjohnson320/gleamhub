@@ -1,5 +1,7 @@
 import app/ci_discovery
 import app/database
+import app/pipeline_events
+import gleam/erlang/process
 import gleam/int
 import gleam/list
 import gleam/option
@@ -21,6 +23,7 @@ pub fn truncate_log(text: String) -> String {
 }
 
 pub fn enqueue_for_merge_request(
+  events_name: process.Name(pipeline_events.Message),
   db: pog.Connection,
   repository_id: String,
   merge_request_id: String,
@@ -31,6 +34,7 @@ pub fn enqueue_for_merge_request(
   case ci_discovery.branch_head_sha(git_dir, source_branch) {
     Ok(commit_sha) ->
       enqueue_for_merge_request_at_sha(
+        events_name,
         db,
         repository_id,
         merge_request_id,
@@ -44,6 +48,7 @@ pub fn enqueue_for_merge_request(
 }
 
 pub fn enqueue_for_merge_request_at_sha(
+  events_name: process.Name(pipeline_events.Message),
   db: pog.Connection,
   repository_id: String,
   merge_request_id: String,
@@ -53,18 +58,35 @@ pub fn enqueue_for_merge_request_at_sha(
 ) -> Result(database.PipelineRunRow, pog.QueryError) {
   case trigger {
     "manual" ->
-      insert_run(db, repository_id, merge_request_id, git_dir, commit_sha, trigger)
+      insert_run(
+        events_name,
+        db,
+        repository_id,
+        merge_request_id,
+        git_dir,
+        commit_sha,
+        trigger,
+      )
     _ ->
       case database.pipeline_run_exists_for_sha(db, merge_request_id, commit_sha) {
         Ok(True) -> database.get_latest_pipeline_run(db, merge_request_id)
         Ok(False) ->
-          insert_run(db, repository_id, merge_request_id, git_dir, commit_sha, trigger)
+          insert_run(
+            events_name,
+            db,
+            repository_id,
+            merge_request_id,
+            git_dir,
+            commit_sha,
+            trigger,
+          )
         Error(e) -> Error(e)
       }
   }
 }
 
 fn insert_run(
+  events_name: process.Name(pipeline_events.Message),
   db: pog.Connection,
   repository_id: String,
   merge_request_id: String,
@@ -77,19 +99,28 @@ fn insert_run(
     option.None -> #("skipped", option.None)
     option.Some(path) -> #("queued", option.Some(path))
   }
-  database.insert_pipeline_run(
-    db,
-    repository_id,
-    merge_request_id,
-    commit_sha,
-    module_path,
-    ci_discovery.default_entry_function,
-    state,
-    trigger,
-  )
+  case
+    database.insert_pipeline_run(
+      db,
+      repository_id,
+      merge_request_id,
+      commit_sha,
+      module_path,
+      ci_discovery.default_entry_function,
+      state,
+      trigger,
+    )
+  {
+    Ok(run) -> {
+      pipeline_events.publish_run(events_name, run)
+      Ok(run)
+    }
+    Error(e) -> Error(e)
+  }
 }
 
 pub fn enqueue_for_branch_push(
+  events_name: process.Name(pipeline_events.Message),
   db: pog.Connection,
   org_slug: String,
   repo_name: String,
@@ -110,6 +141,7 @@ pub fn enqueue_for_branch_push(
   list.each(mrs, fn(mr) {
     let _ =
       enqueue_for_merge_request_at_sha(
+        events_name,
         db,
         repo_row.id,
         mr.id,

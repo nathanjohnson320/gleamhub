@@ -1,6 +1,8 @@
 import app/clerk_api.{type Client}
+import app/pipeline_events
 import app/router
 import app/web
+import gleam/erlang/process
 import gleam/dynamic/decode
 import gleam/http
 import gleam/json
@@ -31,6 +33,8 @@ fn context(
   verify: VerifyKey,
   clerk: option.Option(Client),
 ) -> web.Context {
+  let pipeline_events_name = process.new_name("gleamhub.test.pipeline_events")
+  let assert Ok(_) = pipeline_events.start(pipeline_events_name)
   web.Context(
     clerk_keys: [verify],
     static_directory:,
@@ -41,6 +45,7 @@ fn context(
     clerk:,
     internal_api_token:,
     clerk_issuer: option.None,
+    pipeline_events_name:,
   )
 }
 

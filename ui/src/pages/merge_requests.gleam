@@ -1,4 +1,5 @@
-import api.{type MergeRequest}
+import api.{type MergeRequest, type Pipeline}
+import ci_status
 import components
 import config.{type Config}
 import gleam/dynamic/decode
@@ -284,6 +285,22 @@ fn plural_suffix(count: Int) -> String {
   }
 }
 
+fn mr_href(org: String, repo: String, mr: MergeRequest) -> String {
+  case mr.pipeline {
+    option.Some(_) ->
+      routes.mr_detail_path(org, repo, mr.number) <> "#checks"
+    option.None -> routes.mr_detail_path(org, repo, mr.number)
+  }
+}
+
+fn checks_cell(pipeline: option.Option(Pipeline)) -> Element(Msg) {
+  let summary = case pipeline {
+    option.None -> option.None
+    option.Some(run) -> option.Some(#(run.state, run.commit_sha))
+  }
+  ci_status.pipeline_cell(summary)
+}
+
 fn state_badge(state: String) -> Element(Msg) {
   let classes = case state {
     "open" -> "bg-emerald-50 text-emerald-800 ring-emerald-600/20"
@@ -314,6 +331,7 @@ fn table_mrs(
       th([attr.class(th_class <> " w-16")], [text("#")]),
       th([attr.class(th_class)], [text("Title")]),
       th([attr.class(th_class)], [text("Branches")]),
+      th([attr.class(th_class <> " w-32")], [text("Checks")]),
       th([attr.class(th_class <> " w-28")], [text("State")]),
     ])
   let rows =
@@ -328,7 +346,7 @@ fn table_mrs(
           td([attr.class(td_class)], [
             a(
               [
-                attr.href(routes.mr_detail_path(org, repo, mr.number)),
+                attr.href(mr_href(org, repo, mr)),
                 attr.class("font-semibold tabular-nums text-gh-accent hover:underline"),
               ],
               [text("#" <> int.to_string(mr.number))],
@@ -337,7 +355,7 @@ fn table_mrs(
           td([attr.class(td_class)], [
             a(
               [
-                attr.href(routes.mr_detail_path(org, repo, mr.number)),
+                attr.href(mr_href(org, repo, mr)),
                 attr.class("font-medium text-gh-ink hover:text-gh-accent"),
               ],
               [text(mr.title)],
@@ -350,6 +368,7 @@ fn table_mrs(
               span([attr.class("font-medium text-gh-ink")], [text(mr.target_branch)]),
             ]),
           ]),
+          td([attr.class(td_class)], [checks_cell(mr.pipeline)]),
           td([attr.class(td_class)], [state_badge(mr.state)]),
         ],
       )

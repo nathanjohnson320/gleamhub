@@ -193,9 +193,70 @@ pub fn merge_request_json(mr: MergeRequestRow) -> json.Json {
   ])
 }
 
+pub fn pipeline_summary_json(run: PipelineRunRow) -> json.Json {
+  json.object([
+    #("state", json.string(run.state)),
+    #("commit_sha", json.string(run.commit_sha)),
+    #(
+      "module_path",
+      case run.module_path {
+        "" -> json.null()
+        path -> json.string(path)
+      },
+    ),
+    #("entry_function", json.string(run.entry_function)),
+    #("started_at", optional_string(run.started_at)),
+    #("finished_at", optional_string(run.finished_at)),
+    #("log", json.null()),
+  ])
+}
+
+pub fn merge_request_list_item_json(
+  mr: MergeRequestRow,
+  pipeline: option.Option(PipelineRunRow),
+) -> json.Json {
+  json.object([
+    #("id", json.string(mr.id)),
+    #("number", json.int(mr.number)),
+    #("title", json.string(mr.title)),
+    #("description", optional_string(mr.description)),
+    #("author_user_id", json.string(mr.author_user_id)),
+    #("source_branch", json.string(mr.source_branch)),
+    #("target_branch", json.string(mr.target_branch)),
+    #("state", json.string(mr.state)),
+    #("merge_commit_sha", optional_string(mr.merge_commit_sha)),
+    #("merged_by_user_id", optional_string(mr.merged_by_user_id)),
+    #("merged_at", optional_string(mr.merged_at)),
+    #("closed_at", optional_string(mr.closed_at)),
+    #("created_at", json.string(mr.created_at)),
+    #("updated_at", json.string(mr.updated_at)),
+    #(
+      "pipeline",
+      case pipeline {
+        option.Some(run) -> pipeline_summary_json(run)
+        option.None -> json.null()
+      },
+    ),
+  ])
+}
+
 pub fn merge_requests_json(mrs: List(MergeRequestRow)) -> json.Json {
   json.object([
     #("merge_requests", json.array(mrs, of: merge_request_json)),
+  ])
+}
+
+pub fn merge_requests_list_json(
+  items: List(#(MergeRequestRow, option.Option(PipelineRunRow))),
+) -> json.Json {
+  json.object([
+    #(
+      "merge_requests",
+      json.array(items, of: fn(pair) {
+        let #(mr, pipeline) = pair
+        merge_request_list_item_json(mr, pipeline)
+      }),
+    ),
   ])
 }
 
