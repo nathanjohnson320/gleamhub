@@ -1,0 +1,86 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gleamhub
+    volumes:
+      - gleamhub-pg:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gleamhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # server:
+  #   build:
+  #     context: .
+  #     dockerfile: server/Dockerfile
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   environment:
+  #     SECRET_KEY_BASE: ${SECRET_KEY_BASE:-dev-secret-change-me-in-production}
+  #     DATABASE_URL: postgres://postgres:postgres@postgres:5432/gleamhub?sslmode=disable
+  #     CLERK_JWKS_URL: ${CLERK_JWKS_URL}
+  #     GIT_REPOS_ROOT: /data/repos
+  #     GLEAMHUB_GIT_HOST: ${GLEAMHUB_GIT_HOST:-localhost}
+  #     GLEAMHUB_GIT_PORT: ${GLEAMHUB_GIT_PORT:-2222}
+  #     PORT: "9999"
+  #   volumes:
+  #     - ./server/data/repos:/data/repos
+  #   ports:
+  #     - "9999:9999"
+
+  git-ssh:
+    build:
+      context: ./git-ssh
+    environment:
+      # Reachable API URL for authorized-keys and git hooks (not the public git hostname)
+      GLEAMHUB_API_URL: ${GLEAMHUB_API_URL:-http://host.docker.internal:9999}
+      GIT_REPOS_ROOT: /data/repos
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
+    volumes:
+      # Same path as local `gleam run` (GIT_REPOS_ROOT=./data/repos under server/)
+      - ./server/data/repos:/data/repos
+    ports:
+      # Host port must match GLEAMHUB_GIT_PORT in server/.env (default 2222). Use "22:22" when GLEAMHUB_GIT_PORT=22.
+      - "${GLEAMHUB_GIT_PORT:-2222}:22"
+
+  # Self-hosted merge-request CI (Dagger engine + worker). Enable with: --profile ci
+  dagger-engine:
+    profiles: [ci]
+    # Stable name for Dagger CLI (container:// must match `docker ps`, not the compose service name).
+    container_name: gleamhub-dagger-engine
+    image: registry.dagger.io/engine:v0.21.4
+    privileged: true
+    volumes:
+      - dagger-engine-data:/var/lib/dagger
+    restart: unless-stopped
+
+  ci-worker:
+    profiles: [ci]
+    build:
+      context: ./ci-worker
+    depends_on:
+      - dagger-engine
+    environment:
+      GLEAMHUB_API_URL: ${GLEAMHUB_API_URL:-http://host.docker.internal:9999}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-dev-internal-token-change-me}
+      GIT_REPOS_ROOT: /data/repos
+      _EXPERIMENTAL_DAGGER_RUNNER_HOST: container://gleamhub-dagger-engine
+      CI_LONG_POLL_TIMEOUT: ${CI_LONG_POLL_TIMEOUT:-55}
+      CI_POLL_SECONDS: ${CI_POLL_SECONDS:-5}
+      CI_LOG_PATCH_SECONDS: ${CI_LOG_PATCH_SECONDS:-3}
+      CI_JOB_TIMEOUT_SECONDS: ${CI_JOB_TIMEOUT_SECONDS:-1800}
+    volumes:
+      - ./server/data/repos:/data/repos:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+volumes:
+  gleamhub-pg:
+  dagger-engine-data:

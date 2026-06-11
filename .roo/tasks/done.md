@@ -1,0 +1,75 @@
+# Completed tasks (index)
+
+Baseline shipped 2026-05-27 through 2026-06-10. Full audit logs in [completed/](completed/).
+
+- T0.1 Scaffold monorepo layout (server, ui, common, git-ssh, ci-worker) — [completed/T0.1.md](completed/T0.1.md) — 2026-05-27
+- T0.2 Add docker-compose Postgres + git-ssh services — [completed/T0.2.md](completed/T0.2.md) — 2026-05-27
+- T0.3 Add root and crate env example files — [completed/T0.3.md](completed/T0.3.md) — 2026-05-27
+- T0.4 Pin gleam, erlang, nodejs tool versions — [completed/T0.4.md](completed/T0.4.md) — 2026-05-27
+- T0.5 Add docker-compose.test.yml for integration tests — [completed/T0.5.md](completed/T0.5.md) — 2026-05-27
+- T1.1 Configure Clerk env vars — [completed/T1.1.md](completed/T1.1.md) — 2026-05-27
+- T1.2 Implement JWKS fetch + key cache at boot — [completed/T1.2.md](completed/T1.2.md) — 2026-05-27
+- T1.3 Upsert user from Clerk JWT on each request — [completed/T1.3.md](completed/T1.3.md) — 2026-05-27
+- T1.4 Attach user_id to Wisp Context via middleware — [completed/T1.4.md](completed/T1.4.md) — 2026-05-27
+- T1.5 Add GET /api/me handler — [completed/T1.5.md](completed/T1.5.md) — 2026-05-27
+- T1.6 Guard all /api routes against unauthenticated requests — [completed/T1.6.md](completed/T1.6.md) — 2026-05-27
+- T1.7 Wire Clerk SDK into UI bootstrap — [completed/T1.7.md](completed/T1.7.md) — 2026-05-27
+- T1.8 Add account page (display name, email, sign out) — [completed/T1.8.md](completed/T1.8.md) — 2026-05-27
+- T1.9 Server integration tests for Clerk auth flow — [completed/T1.9.md](completed/T1.9.md) — 2026-05-27
+- T1.10 UI auth parsing/decoding tests — [completed/T1.10.md](completed/T1.10.md) — 2026-05-27
+- T2.1 Create core schema (users, orgs, members, repos, ssh_keys) — [completed/T2.1.md](completed/T2.1.md) — 2026-05-27
+- T2.2 Org CRUD API (list, create, detail) — [completed/T2.2.md](completed/T2.2.md) — 2026-05-27
+- T2.3 Org access middleware (owner/member roles) — [completed/T2.3.md](completed/T2.3.md) — 2026-05-27
+- T2.4 Orgs UI page (list, create org) — [completed/T2.4.md](completed/T2.4.md) — 2026-05-27
+- T2.5 Org repo list with search/filter — [completed/T2.5.md](completed/T2.5.md) — 2026-05-27
+- T2.6 Organization invitations schema + API — [completed/T2.6.md](completed/T2.6.md) — 2026-06-03
+- T2.7 Member invite, promote, demote UI — [completed/T2.7.md](completed/T2.7.md) — 2026-06-03
+- T2.8 Accept/decline invitations from user menu — [completed/T2.8.md](completed/T2.8.md) — 2026-06-03
+- T3.1 Repository CRUD + bare git init on create — [completed/T3.1.md](completed/T3.1.md) — 2026-05-27
+- T3.2 SSH public key CRUD API — [completed/T3.2.md](completed/T3.2.md) — 2026-05-27
+- T3.3 SSH keys settings UI — [completed/T3.3.md](completed/T3.3.md) — 2026-05-27
+- T3.4 Git browse API (branches, tree, blob, raw, archive) — [completed/T3.4.md](completed/T3.4.md) — 2026-05-27
+- T3.5 Commits list + commit detail API and UI — [completed/T3.5.md](completed/T3.5.md) — 2026-05-27
+- T3.6 README preview on repo home — [completed/T3.6.md](completed/T3.6.md) — 2026-05-27
+- T3.7 Blob line permalinks + syntax highlighting — [completed/T3.7.md](completed/T3.7.md) — 2026-05-27
+- T3.8 Repo settings: rename, delete, description — [completed/T3.8.md](completed/T3.8.md) — 2026-05-27
+- T4.1 git-ssh service + authorized_keys internal API — [completed/T4.1.md](completed/T4.1.md) — 2026-05-27
+- T4.2 Internal SSH access check API — [completed/T4.2.md](completed/T4.2.md) — 2026-05-27
+- T4.3 Protected branches schema + read/update API — [completed/T4.3.md](completed/T4.3.md) — 2026-05-29
+- T4.4 pre-receive hook blocks protected branch pushes — [completed/T4.4.md](completed/T4.4.md) — 2026-05-29
+- T4.5 post-receive hook enqueues CI on MR source push — [completed/T4.5.md](completed/T4.5.md) — 2026-06-01
+- T4.6 Protected branches settings UI — [completed/T4.6.md](completed/T4.6.md) — 2026-05-29
+- T5.1 MR schema + create/list/detail API — [completed/T5.1.md](completed/T5.1.md) — 2026-05-28
+- T5.2 MR commits + per-file diff API — [completed/T5.2.md](completed/T5.2.md) — 2026-05-28
+- T5.3 MR comments + inline review comments — [completed/T5.3.md](completed/T5.3.md) — 2026-05-28
+- T5.4 Merge (merge commit, squash, rebase) + close + update branch — [completed/T5.4.md](completed/T5.4.md) — 2026-05-28
+- T5.5 MR UI tabs (conversation, checks, commits, changes) — [completed/T5.5.md](completed/T5.5.md) — 2026-05-28
+- T5.6 MR templates loaded from git — [completed/T5.6.md](completed/T5.6.md) — 2026-05-28
+- T5.7 Draft merge requests — [completed/T5.7.md](completed/T5.7.md) — 2026-06-04
+- T5.8 MR assignees — [completed/T5.8.md](completed/T5.8.md) — 2026-06-05
+- T5.9 MR reviews + required approvals — [completed/T5.9.md](completed/T5.9.md) — 2026-06-06
+- T5.10 MR requested reviewers — [completed/T5.10.md](completed/T5.10.md) — 2026-06-08
+- T5.11 Duplicate MR prevention + conflict file display — [completed/T5.11.md](completed/T5.11.md) — 2026-05-28
+- T6.1 Issues schema + CRUD API — [completed/T6.1.md](completed/T6.1.md) — 2026-05-29
+- T6.2 Issue comments API — [completed/T6.2.md](completed/T6.2.md) — 2026-05-29
+- T6.3 Issue templates loaded from git — [completed/T6.3.md](completed/T6.3.md) — 2026-05-29
+- T6.4 Issue list + detail UI — [completed/T6.4.md](completed/T6.4.md) — 2026-05-29
+- T6.5 Labels + issue/MR assignees — [completed/T6.5.md](completed/T6.5.md) — 2026-06-04
+- T6.6 Issue–MR linking + auto-close on merge — [completed/T6.6.md](completed/T6.6.md) — 2026-06-10
+- T6.7 Milestones schema + API + UI — [completed/T6.7.md](completed/T6.7.md) — 2026-06-10
+- T6.8 @mentions in issue and MR comments — [completed/T6.8.md](completed/T6.8.md) — 2026-06-07
+- T6.9 Issue/MR list filtering UI — [completed/T6.9.md](completed/T6.9.md) — 2026-06-10
+- T6.10 Comment edit and delete (issues + MRs) — [completed/T6.10.md](completed/T6.10.md) — 2026-06-08
+- T6.11 Label edit and delete API + UI — [completed/T6.11.md](completed/T6.11.md) — 2026-06-04
+- T7.1 pipeline_runs schema + CI enqueue internal API — [completed/T7.1.md](completed/T7.1.md) — 2026-06-01
+- T7.2 ci-worker OTP actor long-poll job loop — [completed/T7.2.md](completed/T7.2.md) — 2026-06-01
+- T7.3 Dagger module discovery + log upload — [completed/T7.3.md](completed/T7.3.md) — 2026-06-01
+- T7.4 SSE pipeline stream + Checks tab UI — [completed/T7.4.md](completed/T7.4.md) — 2026-06-01
+- T7.5 Merge gating on CI state — [completed/T7.5.md](completed/T7.5.md) — 2026-06-01
+- T7.6 Default-branch pipeline runs — [completed/T7.6.md](completed/T7.6.md) — 2026-06-05
+- T7.7 Manual re-run checks API + UI — [completed/T7.7.md](completed/T7.7.md) — 2026-06-01
+- T8.1 Releases schema + API — [completed/T8.1.md](completed/T8.1.md) — 2026-06-08
+- T8.2 Tags browse + release create UI — [completed/T8.2.md](completed/T8.2.md) — 2026-06-08
+- T8.3 Notifications schema + event creation — [completed/T8.3.md](completed/T8.3.md) — 2026-06-08
+- T8.4 Notifications API + bell UI — [completed/T8.4.md](completed/T8.4.md) — 2026-06-08
+- T8.5 Default branch setting in repo settings — [completed/T8.5.md](completed/T8.5.md) — 2026-06-05

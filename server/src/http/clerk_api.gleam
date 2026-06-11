@@ -1,0 +1,386 @@
+import database.{
+  type IssueCommentRow, type IssueRow, type MergeRequestCommentRow,
+  comment_with_author_name, issue_comment_with_author_name,
+  issue_with_author_name,
+}
+import envie
+import gleam/dict.{type Dict}
+import gleam/dynamic/decode
+import gleam/http/request
+import gleam/http/response
+import gleam/httpc
+import gleam/json
+import gleam/list
+import gleam/option
+import gleam/result
+import gleam/string
+import gleam/uri
+
+pub type Client {
+  Client(secret_key: String)
+}
+
+pub type ClerkError {
+  MissingSecretKey
+  BadUrl
+  RequestFailed(httpc.HttpError)
+  BadStatus(Int)
+  InvalidResponse
+}
+
+pub type ClerkUser {
+  ClerkUser(
+    id: String,
+    first_name: option.Option(String),
+    last_name: option.Option(String),
+    username: option.Option(String),
+    primary_email_address_id: option.Option(String),
+    email_addresses: List(ClerkEmail),
+  )
+}
+
+pub type ClerkEmail {
+  ClerkEmail(id: String, email_address: String)
+}
+
+pub fn client_from_env() -> option.Option(Client) {
+  case envie.get("CLERK_SECRET_KEY") {
+    Ok(key) ->
+      case string.trim(key) {
+        "" -> option.None
+        trimmed -> option.Some(Client(secret_key: trimmed))
+      }
+    Error(_) -> option.None
+  }
+}
+
+/// Decode a Clerk users list API response (for tests).
+pub fn decode_clerk_users(body: String) -> Result(List(ClerkUser), ClerkError) {
+  decode_users(body)
+}
+
+pub fn hydrate_comments(
+  client: Client,
+  comments: List(MergeRequestCommentRow),
+) -> List(MergeRequestCommentRow) {
+  let author_ids =
+    comments
+    |> list.map(fn(comment) { comment.author_user_id })
+    |> list.unique
+
+  case lookup_display_names(client, author_ids) {
+    Ok(names) ->
+      list.map(comments, fn(comment) {
+        let author_name = case dict.get(names, comment.author_user_id) {
+          Ok(name) -> name
+          Error(_) -> comment.author_user_id
+        }
+        comment_with_author_name(comment, author_name)
+      })
+    Error(_) -> comments
+  }
+}
+
+pub fn hydrate_issue_comments(
+  client: Client,
+  comments: List(IssueCommentRow),
+) -> List(IssueCommentRow) {
+  let author_ids =
+    comments
+    |> list.map(fn(comment) { comment.author_user_id })
+    |> list.unique
+
+  case lookup_display_names(client, author_ids) {
+    Ok(names) ->
+      list.map(comments, fn(comment) {
+        let author_name = case dict.get(names, comment.author_user_id) {
+          Ok(name) -> name
+          Error(_) -> comment.author_user_id
+        }
+        issue_comment_with_author_name(comment, author_name)
+      })
+    Error(_) -> comments
+  }
+}
+
+pub fn hydrate_issues(
+  client: Client,
+  issues: List(IssueRow),
+) -> List(IssueRow) {
+  let author_ids =
+    issues
+    |> list.map(fn(issue) { issue.author_user_id })
+    |> list.unique
+
+  case lookup_display_names(client, author_ids) {
+    Ok(names) ->
+      list.map(issues, fn(issue) {
+        let author_name = case dict.get(names, issue.author_user_id) {
+          Ok(name) -> name
+          Error(_) -> issue.author_name
+        }
+        issue_with_author_name(issue, author_name)
+      })
+    Error(_) -> issues
+  }
+}
+
+pub fn hydrate_issue(client: Client, issue: IssueRow) -> IssueRow {
+  case hydrate_issues(client, [issue]) {
+    [hydrated] -> hydrated
+    _ -> issue
+  }
+}
+
+/// Resolve a display label for a Clerk user id (falls back to the id).
+pub fn author_display_name(client: Client, user_id: String) -> String {
+  case lookup_display_names(client, [user_id]) {
+    Ok(names) ->
+      case dict.get(names, user_id) {
+        Ok(name) -> name
+        Error(_) -> user_id
+      }
+    Error(_) -> user_id
+  }
+}
+
+/// Batch lookup for multiple author ids (empty dict on Clerk failure).
+pub fn author_display_names(
+  client: Client,
+  user_ids: List(String),
+) -> Dict(String, String) {
+  case lookup_display_names(client, list.unique(user_ids)) {
+    Ok(names) -> names
+    Error(_) -> dict.new()
+  }
+}
+
+pub fn search_users(
+  client: Client,
+  query: String,
+) -> Result(List(ClerkUser), ClerkError) {
+  use response <- result.try(send_get(client, users_search_uri(query)))
+  case response.status {
+    200 -> decode_users(response.body)
+    status -> Error(BadStatus(status))
+  }
+}
+
+pub fn username(user: ClerkUser) -> option.Option(String) {
+  case user.username {
+    option.Some(value) ->
+      case string.trim(value) {
+        "" -> option.None
+        trimmed -> option.Some(trimmed)
+      }
+    option.None -> option.None
+  }
+}
+
+pub fn lookup_usernames(
+  client: Client,
+  user_ids: List(String),
+) -> Result(Dict(String, String), ClerkError) {
+  case user_ids {
+    [] -> Ok(dict.new())
+    ids ->
+      fetch_users(client, ids)
+      |> result.map(fn(users) {
+        list.fold(users, dict.new(), fn(names, user) {
+          case username(user) {
+            option.Some(name) -> dict.insert(names, user.id, name)
+            option.None -> names
+          }
+        })
+      })
+  }
+}
+
+pub fn profile_for_user(
+  client: Client,
+  user_id: String,
+) -> Result(#(option.Option(String), option.Option(String)), ClerkError) {
+  case fetch_users(client, [user_id]) {
+    Ok(users) ->
+      case list.first(users) {
+        Ok(user) -> Ok(#(option.Some(display_name(user)), primary_email(user)))
+        Error(_) -> Ok(#(option.None, option.None))
+      }
+    Error(err) -> Error(err)
+  }
+}
+
+fn lookup_display_names(
+  client: Client,
+  user_ids: List(String),
+) -> Result(Dict(String, String), ClerkError) {
+  case user_ids {
+    [] -> Ok(dict.new())
+    ids ->
+      fetch_users(client, ids)
+      |> result.map(fn(users) {
+        list.fold(users, dict.new(), fn(names, user) {
+          dict.insert(names, user.id, display_name(user))
+        })
+      })
+  }
+}
+
+fn fetch_users(
+  client: Client,
+  user_ids: List(String),
+) -> Result(List(ClerkUser), ClerkError) {
+  use response <- result.try(send_get(client, users_list_uri(user_ids)))
+  case response.status {
+    200 -> decode_users(response.body)
+    status -> Error(BadStatus(status))
+  }
+}
+
+fn send_get(
+  client: Client,
+  target: uri.Uri,
+) -> Result(response.Response(String), ClerkError) {
+  use req <- result.try(
+    request.from_uri(target)
+    |> result.map_error(fn(_) { BadUrl }),
+  )
+  let req =
+    req
+    |> request.set_header("authorization", "Bearer " <> client.secret_key)
+    |> request.set_header("accept", "application/json")
+
+  httpc.send(req)
+  |> result.map_error(RequestFailed)
+}
+
+fn users_list_uri(user_ids: List(String)) -> uri.Uri {
+  let user_params = list.map(user_ids, fn(user_id) { #("user_id[]", user_id) })
+  let query_pairs = list.append(user_params, [#("limit", "500")])
+  clerk_users_uri(query_pairs)
+}
+
+fn users_search_uri(query: String) -> uri.Uri {
+  clerk_users_uri([#("username_query", query), #("limit", "10")])
+}
+
+fn clerk_users_uri(query_pairs: List(#(String, String))) -> uri.Uri {
+  uri.Uri(
+    scheme: option.Some("https"),
+    userinfo: option.None,
+    host: option.Some("api.clerk.com"),
+    port: option.None,
+    path: "/v1/users",
+    query: option.Some(uri.query_to_string(query_pairs)),
+    fragment: option.None,
+  )
+}
+
+fn decode_users(body: String) -> Result(List(ClerkUser), ClerkError) {
+  case json.parse(body, decode.list(user_decoder())) {
+    Ok(users) -> Ok(users)
+    Error(_) ->
+      case json.parse(body, users_list_from_object_decoder()) {
+        Ok(users) -> Ok(users)
+        Error(_) -> Error(InvalidResponse)
+      }
+  }
+}
+
+fn users_list_from_object_decoder() -> decode.Decoder(List(ClerkUser)) {
+  decode.at(["data"], decode.optional(decode.list(user_decoder())))
+  |> decode.map(fn(users) { option.unwrap(users, []) })
+}
+
+fn user_decoder() -> decode.Decoder(ClerkUser) {
+  use id <- decode.field("id", decode.string)
+  use first_name <- decode.field("first_name", decode.optional(decode.string))
+  use last_name <- decode.field("last_name", decode.optional(decode.string))
+  use username <- decode.field("username", decode.optional(decode.string))
+  use primary_email_address_id <- decode.field(
+    "primary_email_address_id",
+    decode.optional(decode.string),
+  )
+  use email_addresses <- decode.optional_field(
+    "email_addresses",
+    [],
+    decode.optional(decode.list(email_decoder()))
+      |> decode.map(option.unwrap(_, [])),
+  )
+  decode.success(ClerkUser(
+    id:,
+    first_name:,
+    last_name:,
+    username:,
+    primary_email_address_id:,
+    email_addresses:,
+  ))
+}
+
+fn email_decoder() -> decode.Decoder(ClerkEmail) {
+  use id <- decode.field("id", decode.string)
+  use email_address <- decode.field("email_address", decode.string)
+  decode.success(ClerkEmail(id:, email_address:))
+}
+
+pub fn display_name(user: ClerkUser) -> String {
+  case user.username {
+    option.Some(username) ->
+      case string.trim(username) {
+        "" -> display_name_without_username(user)
+        trimmed -> trimmed
+      }
+    option.None -> display_name_without_username(user)
+  }
+}
+
+fn display_name_without_username(user: ClerkUser) -> String {
+  case full_name(user.first_name, user.last_name) {
+    option.Some(name) -> name
+    option.None ->
+      primary_email(user)
+      |> option.unwrap(user.id)
+  }
+}
+
+fn full_name(
+  first_name: option.Option(String),
+  last_name: option.Option(String),
+) -> option.Option(String) {
+  case first_name, last_name {
+    option.Some(first), option.Some(last) -> {
+      let name = string.trim(first <> " " <> last)
+      case name {
+        "" -> option.None
+        trimmed -> option.Some(trimmed)
+      }
+    }
+    option.Some(first), option.None -> option.Some(first)
+    option.None, option.Some(last) -> option.Some(last)
+    option.None, option.None -> option.None
+  }
+}
+
+fn primary_email(user: ClerkUser) -> option.Option(String) {
+  case user.primary_email_address_id {
+    option.Some(primary_id) -> find_email(user.email_addresses, primary_id)
+    option.None -> first_email(user.email_addresses)
+  }
+}
+
+fn find_email(
+  emails: List(ClerkEmail),
+  primary_id: String,
+) -> option.Option(String) {
+  case list.find(emails, fn(email) { email.id == primary_id }) {
+    Ok(email) -> option.Some(email.email_address)
+    Error(_) -> option.None
+  }
+}
+
+fn first_email(emails: List(ClerkEmail)) -> option.Option(String) {
+  case emails {
+    [first, ..] -> option.Some(first.email_address)
+    [] -> option.None
+  }
+}

@@ -1,0 +1,15 @@
+name = "ci_worker"
+version = "0.1.0"
+description = "Gleamhub CI worker - polls the API and runs Dagger pipelines"
+
+[dependencies]
+gleam_stdlib = "~> 1.0"
+gleam_erlang = "~> 1.2"
+gleam_otp = ">= 1.2.0 and < 2.0.0"
+gleam_json = "~> 3.0"
+gleam_http = "~> 4.1"
+gleam_httpc = ">= 5.0.0 and < 6.0.0"
+envie = "~> 1.2"
+
+[dev-dependencies]
+gleeunit = "~> 1.6"
