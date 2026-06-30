@@ -1,4 +1,4 @@
-\restrict 5vtBVn0BS6embgRI08eqHs2bVBlWWriH8iobZUycDAMtjf73HQg1Z1DZKn1h4XT
+\restrict CE1xDmhKrnwa6gSpsfn1GJ2RxYm2fWuvCDc4dDtSVyCWuJCGw3Tgv7bXw5cfOMk
 
 -- Dumped from database version 16.14
 -- Dumped by pg_dump version 18.3
@@ -55,6 +55,18 @@ CREATE TABLE public.issue_labels (
 
 
 --
+-- Name: issue_merge_request_links; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.issue_merge_request_links (
+    issue_id uuid NOT NULL,
+    merge_request_id uuid NOT NULL,
+    link_type character varying(32) DEFAULT 'closes'::character varying NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: issues; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -68,7 +80,8 @@ CREATE TABLE public.issues (
     state character varying(32) NOT NULL,
     closed_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    milestone_id uuid
 );
 
 
@@ -121,6 +134,18 @@ CREATE TABLE public.merge_request_labels (
 
 
 --
+-- Name: merge_request_reviewers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.merge_request_reviewers (
+    merge_request_id uuid NOT NULL,
+    user_id character varying(255) NOT NULL,
+    requested_by_user_id character varying(255) NOT NULL,
+    requested_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: merge_request_reviews; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -156,6 +181,24 @@ CREATE TABLE public.merge_requests (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     is_draft boolean DEFAULT false NOT NULL
+);
+
+
+--
+-- Name: milestones; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.milestones (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    repository_id uuid NOT NULL,
+    number integer NOT NULL,
+    title character varying(255) NOT NULL,
+    description text,
+    state character varying(32) DEFAULT 'open'::character varying NOT NULL,
+    due_on date,
+    closed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -232,6 +275,51 @@ CREATE TABLE public.pipeline_runs (
 
 
 --
+-- Name: project_columns; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.project_columns (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    project_id uuid NOT NULL,
+    name character varying(255) NOT NULL,
+    "position" integer NOT NULL
+);
+
+
+--
+-- Name: project_items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.project_items (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    project_id uuid NOT NULL,
+    column_id uuid NOT NULL,
+    "position" integer NOT NULL,
+    item_type character varying(32) NOT NULL,
+    repository_id uuid NOT NULL,
+    item_number integer NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: projects; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.projects (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id uuid NOT NULL,
+    number integer NOT NULL,
+    title character varying(255) NOT NULL,
+    description text,
+    state character varying(32) DEFAULT 'open'::character varying NOT NULL,
+    created_by_user_id character varying(255) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: protected_branches; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -239,6 +327,22 @@ CREATE TABLE public.protected_branches (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     repository_id uuid NOT NULL,
     branch_name character varying(255) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: releases; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.releases (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    repository_id uuid NOT NULL,
+    tag_name character varying(255) NOT NULL,
+    target_commit_sha character varying(40) NOT NULL,
+    title character varying(255) NOT NULL,
+    body text,
+    author_user_id character varying(255) NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
@@ -332,6 +436,14 @@ ALTER TABLE ONLY public.issue_labels
 
 
 --
+-- Name: issue_merge_request_links issue_merge_request_links_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.issue_merge_request_links
+    ADD CONSTRAINT issue_merge_request_links_pkey PRIMARY KEY (issue_id, merge_request_id);
+
+
+--
 -- Name: issues issues_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -380,6 +492,14 @@ ALTER TABLE ONLY public.merge_request_labels
 
 
 --
+-- Name: merge_request_reviewers merge_request_reviewers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.merge_request_reviewers
+    ADD CONSTRAINT merge_request_reviewers_pkey PRIMARY KEY (merge_request_id, user_id);
+
+
+--
 -- Name: merge_request_reviews merge_request_reviews_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -401,6 +521,22 @@ ALTER TABLE ONLY public.merge_requests
 
 ALTER TABLE ONLY public.merge_requests
     ADD CONSTRAINT merge_requests_repository_id_number_key UNIQUE (repository_id, number);
+
+
+--
+-- Name: milestones milestones_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.milestones
+    ADD CONSTRAINT milestones_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: milestones milestones_repository_id_number_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.milestones
+    ADD CONSTRAINT milestones_repository_id_number_key UNIQUE (repository_id, number);
 
 
 --
@@ -452,6 +588,54 @@ ALTER TABLE ONLY public.pipeline_runs
 
 
 --
+-- Name: project_columns project_columns_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_columns
+    ADD CONSTRAINT project_columns_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: project_columns project_columns_project_id_position_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_columns
+    ADD CONSTRAINT project_columns_project_id_position_key UNIQUE (project_id, "position");
+
+
+--
+-- Name: project_items project_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_items
+    ADD CONSTRAINT project_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: project_items project_items_project_id_item_type_repository_id_item_numbe_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_items
+    ADD CONSTRAINT project_items_project_id_item_type_repository_id_item_numbe_key UNIQUE (project_id, item_type, repository_id, item_number);
+
+
+--
+-- Name: projects projects_organization_id_number_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.projects
+    ADD CONSTRAINT projects_organization_id_number_key UNIQUE (organization_id, number);
+
+
+--
+-- Name: projects projects_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.projects
+    ADD CONSTRAINT projects_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: protected_branches protected_branches_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -465,6 +649,22 @@ ALTER TABLE ONLY public.protected_branches
 
 ALTER TABLE ONLY public.protected_branches
     ADD CONSTRAINT protected_branches_repository_id_branch_name_key UNIQUE (repository_id, branch_name);
+
+
+--
+-- Name: releases releases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.releases
+    ADD CONSTRAINT releases_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: releases releases_repository_id_tag_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.releases
+    ADD CONSTRAINT releases_repository_id_tag_name_key UNIQUE (repository_id, tag_name);
 
 
 --
@@ -553,6 +753,20 @@ CREATE INDEX issue_labels_issue_id_idx ON public.issue_labels USING btree (issue
 
 
 --
+-- Name: issue_merge_request_links_mr_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX issue_merge_request_links_mr_id_idx ON public.issue_merge_request_links USING btree (merge_request_id);
+
+
+--
+-- Name: issues_milestone_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX issues_milestone_id_idx ON public.issues USING btree (milestone_id);
+
+
+--
 -- Name: issues_repository_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -585,6 +799,13 @@ CREATE INDEX merge_request_comments_mr_id_idx ON public.merge_request_comments U
 --
 
 CREATE INDEX merge_request_labels_merge_request_id_idx ON public.merge_request_labels USING btree (merge_request_id);
+
+
+--
+-- Name: merge_request_reviewers_merge_request_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX merge_request_reviewers_merge_request_id_idx ON public.merge_request_reviewers USING btree (merge_request_id);
 
 
 --
@@ -672,10 +893,52 @@ CREATE INDEX pipeline_runs_state_created_at_idx ON public.pipeline_runs USING bt
 
 
 --
+-- Name: project_columns_project_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX project_columns_project_id_idx ON public.project_columns USING btree (project_id);
+
+
+--
+-- Name: project_items_column_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX project_items_column_id_idx ON public.project_items USING btree (column_id);
+
+
+--
+-- Name: project_items_project_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX project_items_project_id_idx ON public.project_items USING btree (project_id);
+
+
+--
+-- Name: project_items_repository_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX project_items_repository_id_idx ON public.project_items USING btree (repository_id);
+
+
+--
+-- Name: projects_organization_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX projects_organization_id_idx ON public.projects USING btree (organization_id);
+
+
+--
 -- Name: protected_branches_repository_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX protected_branches_repository_id_idx ON public.protected_branches USING btree (repository_id);
+
+
+--
+-- Name: releases_repository_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX releases_repository_id_idx ON public.releases USING btree (repository_id);
 
 
 --
@@ -748,11 +1011,35 @@ ALTER TABLE ONLY public.issue_labels
 
 
 --
+-- Name: issue_merge_request_links issue_merge_request_links_issue_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.issue_merge_request_links
+    ADD CONSTRAINT issue_merge_request_links_issue_id_fkey FOREIGN KEY (issue_id) REFERENCES public.issues(id) ON DELETE CASCADE;
+
+
+--
+-- Name: issue_merge_request_links issue_merge_request_links_merge_request_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.issue_merge_request_links
+    ADD CONSTRAINT issue_merge_request_links_merge_request_id_fkey FOREIGN KEY (merge_request_id) REFERENCES public.merge_requests(id) ON DELETE CASCADE;
+
+
+--
 -- Name: issues issues_author_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.issues
     ADD CONSTRAINT issues_author_user_id_fkey FOREIGN KEY (author_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: issues issues_milestone_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.issues
+    ADD CONSTRAINT issues_milestone_id_fkey FOREIGN KEY (milestone_id) REFERENCES public.milestones(id) ON DELETE SET NULL;
 
 
 --
@@ -812,6 +1099,30 @@ ALTER TABLE ONLY public.merge_request_labels
 
 
 --
+-- Name: merge_request_reviewers merge_request_reviewers_merge_request_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.merge_request_reviewers
+    ADD CONSTRAINT merge_request_reviewers_merge_request_id_fkey FOREIGN KEY (merge_request_id) REFERENCES public.merge_requests(id) ON DELETE CASCADE;
+
+
+--
+-- Name: merge_request_reviewers merge_request_reviewers_requested_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.merge_request_reviewers
+    ADD CONSTRAINT merge_request_reviewers_requested_by_user_id_fkey FOREIGN KEY (requested_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: merge_request_reviewers merge_request_reviewers_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.merge_request_reviewers
+    ADD CONSTRAINT merge_request_reviewers_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: merge_request_reviews merge_request_reviews_merge_request_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -849,6 +1160,14 @@ ALTER TABLE ONLY public.merge_requests
 
 ALTER TABLE ONLY public.merge_requests
     ADD CONSTRAINT merge_requests_repository_id_fkey FOREIGN KEY (repository_id) REFERENCES public.repositories(id) ON DELETE CASCADE;
+
+
+--
+-- Name: milestones milestones_repository_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.milestones
+    ADD CONSTRAINT milestones_repository_id_fkey FOREIGN KEY (repository_id) REFERENCES public.repositories(id) ON DELETE CASCADE;
 
 
 --
@@ -916,11 +1235,75 @@ ALTER TABLE ONLY public.pipeline_runs
 
 
 --
+-- Name: project_columns project_columns_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_columns
+    ADD CONSTRAINT project_columns_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;
+
+
+--
+-- Name: project_items project_items_column_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_items
+    ADD CONSTRAINT project_items_column_id_fkey FOREIGN KEY (column_id) REFERENCES public.project_columns(id) ON DELETE CASCADE;
+
+
+--
+-- Name: project_items project_items_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_items
+    ADD CONSTRAINT project_items_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;
+
+
+--
+-- Name: project_items project_items_repository_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.project_items
+    ADD CONSTRAINT project_items_repository_id_fkey FOREIGN KEY (repository_id) REFERENCES public.repositories(id) ON DELETE CASCADE;
+
+
+--
+-- Name: projects projects_created_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.projects
+    ADD CONSTRAINT projects_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: projects projects_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.projects
+    ADD CONSTRAINT projects_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+
+
+--
 -- Name: protected_branches protected_branches_repository_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.protected_branches
     ADD CONSTRAINT protected_branches_repository_id_fkey FOREIGN KEY (repository_id) REFERENCES public.repositories(id) ON DELETE CASCADE;
+
+
+--
+-- Name: releases releases_author_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.releases
+    ADD CONSTRAINT releases_author_user_id_fkey FOREIGN KEY (author_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: releases releases_repository_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.releases
+    ADD CONSTRAINT releases_repository_id_fkey FOREIGN KEY (repository_id) REFERENCES public.repositories(id) ON DELETE CASCADE;
 
 
 --
@@ -951,7 +1334,7 @@ ALTER TABLE ONLY public.ssh_public_keys
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 5vtBVn0BS6embgRI08eqHs2bVBlWWriH8iobZUycDAMtjf73HQg1Z1DZKn1h4XT
+\unrestrict CE1xDmhKrnwa6gSpsfn1GJ2RxYm2fWuvCDc4dDtSVyCWuJCGw3Tgv7bXw5cfOMk
 
 
 --
@@ -972,4 +1355,9 @@ INSERT INTO public.schema_migrations (version) VALUES
     ('20260605130000'),
     ('20260606120000'),
     ('20260607120000'),
-    ('20260608120000');
+    ('20260608120000'),
+    ('20260608130000'),
+    ('20260608140000'),
+    ('20260610120000'),
+    ('20260610140000'),
+    ('20260630120000');

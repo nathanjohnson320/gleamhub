@@ -24,13 +24,15 @@ import pages/my_space
 import pages/org_members
 import pages/org_repos
 import pages/orgs
+import pages/projects
 import pages/releases
 import pages/repo_settings
 import pages/repo_view
 import routes.{
   type Route, Account, CommitsList, IssueDetail, IssueList, IssueNew, Keys,
   MilestoneDetail, MilestoneList, MilestoneNew, MrDetail, MrList, MrNew,
-  MySpace, NotFound, OrgMembers, OrgRepos, Orgs, ReleaseDetail, ReleaseList,
+  MySpace, NotFound, OrgMembers, OrgRepos, Orgs, ProjectDetail, ProjectList,
+  ProjectNew, ReleaseDetail, ReleaseList,
   ReleaseNew, RepoMissingOrg, RepoSettings,
   RepoView, account_path, from_uri, keys_path, my_tab_path,
 }
@@ -65,6 +67,7 @@ type Model {
     commits: option.Option(commits.Model),
     releases: option.Option(releases.Model),
     milestones: option.Option(milestones.Model),
+    projects: option.Option(projects.Model),
     keys: keys.Model,
     my_space: my_space.Model,
     user_menu_open: Bool,
@@ -89,6 +92,7 @@ pub type Msg {
   CommitsMsg(commits.Msg)
   ReleasesMsg(releases.Msg)
   MilestonesMsg(milestones.Msg)
+  ProjectsMsg(projects.Msg)
   KeysMsg(keys.Msg)
   MySpaceMsg(my_space.Msg)
   ClerkSessionUpdated(String)
@@ -127,6 +131,7 @@ fn init(flags: Flags) -> #(Model, Effect(Msg)) {
       commits: commits_model(route),
       releases: releases_model(route),
       milestones: milestones_model(route),
+      projects: projects_model(route),
       keys: keys.init(),
       my_space: my_space.init(routes.MyOverview),
       user_menu_open: False,
@@ -145,6 +150,8 @@ fn init(flags: Flags) -> #(Model, Effect(Msg)) {
         repo_view,
         issue_detail,
         my_space.init(routes.MyOverview),
+        projects_model(route),
+        False,
       ),
       case route {
         MySpace(_) -> effect.none()
@@ -360,6 +367,63 @@ fn milestones_model(route: Route) -> option.Option(milestones.Model) {
   }
 }
 
+fn projects_model(route: Route) -> option.Option(projects.Model) {
+  case projects_for_route(route, option.None) {
+    #(model, _) -> model
+  }
+}
+
+fn projects_for_route(
+  route: Route,
+  existing: option.Option(projects.Model),
+) -> #(option.Option(projects.Model), Bool) {
+  case route {
+    ProjectList(org) -> {
+      case existing {
+        option.Some(p) -> {
+          case p.org_slug == org, p.mode {
+            True, projects.List -> #(option.Some(p), True)
+            _, _ -> #(option.Some(projects.init(org, projects.List)), False)
+          }
+        }
+        option.None -> #(option.Some(projects.init(org, projects.List)), False)
+      }
+    }
+    ProjectNew(org) -> {
+      case existing {
+        option.Some(p) -> {
+          case p.org_slug == org, p.mode {
+            True, projects.New -> #(option.Some(p), True)
+            _, _ -> #(option.Some(projects.init(org, projects.New)), False)
+          }
+        }
+        option.None -> #(option.Some(projects.init(org, projects.New)), False)
+      }
+    }
+    ProjectDetail(org, number) -> {
+      case existing {
+        option.Some(p) -> {
+          case p.mode {
+            projects.Detail(n) if p.org_slug == org && n == number -> #(
+              option.Some(p),
+              True,
+            )
+            _ -> #(
+              option.Some(projects.init(org, projects.Detail(number))),
+              False,
+            )
+          }
+        }
+        option.None -> #(
+          option.Some(projects.init(org, projects.Detail(number))),
+          False,
+        )
+      }
+    }
+    _ -> #(option.None, False)
+  }
+}
+
 fn me_refresh_effect(
   config: config.Config,
   auth_user: option.Option(auth.User),
@@ -386,12 +450,20 @@ fn route_effect(
   repo_after: option.Option(repo_view.Model),
   issue_detail: option.Option(issue_detail.Model),
   my_space_model: my_space.Model,
+  projects_after: option.Option(projects.Model),
+  projects_synced: Bool,
 ) -> Effect(Msg) {
   case route {
     Orgs -> effect.map(orgs.on_load(config), OrgsMsg)
     OrgRepos(slug) -> effect.map(org_repos.on_load(config, slug), ReposMsg)
     OrgMembers(slug) ->
       effect.map(org_members.on_load(config, slug), MembersMsg)
+    ProjectList(_) | ProjectNew(_) | ProjectDetail(_, _) ->
+      case projects_after, projects_synced {
+        option.Some(m), False ->
+          effect.map(projects.on_load(config, m), ProjectsMsg)
+        _, _ -> effect.none()
+      }
     RepoView(_, _, _, _, _, _) ->
       case repo_after, repo_synced, repo_before {
         option.Some(after), True, option.Some(before) ->
@@ -470,6 +542,8 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       let #(mr_detail, mr_synced) =
         mr_detail_for_route(route, mr_before, model.auth_user)
       let #(repo_view, repo_synced) = repo_view_for_route(route, repo_before)
+      let #(projects, projects_synced) =
+        projects_for_route(route, model.projects)
       let issue_detail = issue_detail_model(route, model.auth_user)
       let my_space_model = case route, model.route {
         MySpace(tab), MySpace(_) -> my_space.switch_tab(model.my_space, tab)
@@ -496,6 +570,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
           commits: commits_model(route),
           releases: releases_model(route),
           milestones: milestones_model(route),
+          projects:,
           my_space: my_space_model,
           user_menu_open: False,
         ),
@@ -512,6 +587,8 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
             repo_view,
             issue_detail,
             my_space_model,
+            projects,
+            projects_synced,
           ),
           case route {
             MySpace(_) -> effect.none()
@@ -656,6 +733,19 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
         option.None -> #(model, effect.none())
       }
     }
+    ProjectsMsg(m) -> {
+      case model.projects {
+        option.Some(projects_model) -> {
+          let #(projects_model, eff) =
+            projects.update(m, projects_model, model.config)
+          #(
+            Model(..model, projects: option.Some(projects_model)),
+            effect.map(eff, ProjectsMsg),
+          )
+        }
+        option.None -> #(model, effect.none())
+      }
+    }
     KeysMsg(m) -> {
       let #(keys, eff) = keys.update(m, model.keys, model.config)
       #(Model(..model, keys:), effect.map(eff, KeysMsg))
@@ -694,6 +784,8 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
             refreshed.repo_view,
             refreshed.issue_detail,
             refreshed.my_space,
+            refreshed.projects,
+            True,
           )
         False -> effect.none()
       })
@@ -852,6 +944,16 @@ fn view(model: Model) -> Element(Msg) {
     OrgMembers(_) -> {
       case model.members {
         option.Some(m) -> org_members.view(m) |> map(MembersMsg)
+        option.None ->
+          div([attr.class(components.page)], [
+            components.loading_state(),
+          ])
+      }
+    }
+    ProjectList(_) | ProjectNew(_) | ProjectDetail(_, _) -> {
+      case model.projects {
+        option.Some(projects_model) ->
+          projects.view(projects_model) |> map(ProjectsMsg)
         option.None ->
           div([attr.class(components.page)], [
             components.loading_state(),

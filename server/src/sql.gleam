@@ -6253,6 +6253,815 @@ RETURNING
   |> pog.execute(db)
 }
 
+/// A row you get from running the `project_board` query
+/// defined in `./src/sql/project_board.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.7.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type ProjectBoardRow {
+  ProjectBoardRow(
+    column_id: String,
+    column_name: String,
+    column_position: Int,
+    item_id: String,
+    item_position: Option(Int),
+    item_type: Option(String),
+    item_number: Option(Int),
+    repo_name: Option(String),
+    org_slug: String,
+    item_title: String,
+    item_state: String,
+    item_created_at: String,
+  )
+}
+
+/// Runs the `project_board` query
+/// defined in `./src/sql/project_board.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.7.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn project_board(
+  db: pog.Connection,
+  o_slug: String,
+  p_number: Int,
+) -> Result(pog.Returned(ProjectBoardRow), pog.QueryError) {
+  let decoder = {
+    use column_id <- decode.field(0, decode.string)
+    use column_name <- decode.field(1, decode.string)
+    use column_position <- decode.field(2, decode.int)
+    use item_id <- decode.field(3, decode.string)
+    use item_position <- decode.field(4, decode.optional(decode.int))
+    use item_type <- decode.field(5, decode.optional(decode.string))
+    use item_number <- decode.field(6, decode.optional(decode.int))
+    use repo_name <- decode.field(7, decode.optional(decode.string))
+    use org_slug <- decode.field(8, decode.string)
+    use item_title <- decode.field(9, decode.string)
+    use item_state <- decode.field(10, decode.string)
+    use item_created_at <- decode.field(11, decode.string)
+    decode.success(ProjectBoardRow(
+      column_id:,
+      column_name:,
+      column_position:,
+      item_id:,
+      item_position:,
+      item_type:,
+      item_number:,
+      repo_name:,
+      org_slug:,
+      item_title:,
+      item_state:,
+      item_created_at:,
+    ))
+  }
+
+  "SELECT
+  pc.id::text AS column_id,
+  pc.name AS column_name,
+  pc.position AS column_position,
+  COALESCE(pi.id::text, '') AS item_id,
+  pi.position AS item_position,
+  pi.item_type,
+  pi.item_number,
+  r.name AS repo_name,
+  o.slug AS org_slug,
+  COALESCE(i.title, mr.title, '') AS item_title,
+  COALESCE(i.state, mr.state, '') AS item_state,
+  COALESCE(pi.created_at::text, '') AS item_created_at
+FROM projects p
+INNER JOIN organizations o ON o.id = p.organization_id
+INNER JOIN project_columns pc ON pc.project_id = p.id
+LEFT JOIN project_items pi ON pi.column_id = pc.id
+LEFT JOIN repositories r ON r.id = pi.repository_id
+LEFT JOIN issues i
+  ON pi.item_type = 'issue'
+  AND i.repository_id = r.id
+  AND i.number = pi.item_number
+LEFT JOIN merge_requests mr
+  ON pi.item_type = 'merge_request'
+  AND mr.repository_id = r.id
+  AND mr.number = pi.item_number
+WHERE o.slug = $1 AND p.number = $2
+ORDER BY pc.position, pi.position;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(o_slug))
+  |> pog.parameter(pog.int(p_number))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `project_column_delete` query
+/// defined in `./src/sql/project_column_delete.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.7.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type ProjectColumnDeleteRow {
+  ProjectColumnDeleteRow(id: String)
+}
+
+/// Runs the `project_column_delete` query
+/// defined in `./src/sql/project_column_delete.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.7.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn project_column_delete(
+  db: pog.Connection,
+  o_slug: String,
+  p_number: Int,
+  arg_3: Uuid,
+) -> Result(pog.Returned(ProjectColumnDeleteRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    decode.success(ProjectColumnDeleteRow(id:))
+  }
+
+  "DELETE FROM project_columns pc
+USING projects p
+INNER JOIN organizations o ON o.id = p.organization_id
+WHERE pc.project_id = p.id
+  AND pc.id = $3::uuid
+  AND o.slug = $1
+  AND p.number = $2
+RETURNING pc.id::text;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(o_slug))
+  |> pog.parameter(pog.int(p_number))
+  |> pog.parameter(pog.text(uuid.to_string(arg_3)))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `project_column_insert` query
+/// defined in `./src/sql/project_column_insert.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.7.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type ProjectColumnInsertRow {
+  ProjectColumnInsertRow(id: String, name: String, position: Int)
+}
+
+/// Runs the `project_column_insert` query
+/// defined in `./src/sql/project_column_insert.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.7.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn project_column_insert(
+  db: pog.Connection,
+  o_slug: String,
+  p_number: Int,
+  arg_3: String,
+  arg_4: Int,
+) -> Result(pog.Returned(ProjectColumnInsertRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use name <- decode.field(1, decode.string)
+    use position <- decode.field(2, decode.int)
+    decode.success(ProjectColumnInsertRow(id:, name:, position:))
+  }
+
+  "INSERT INTO project_columns (project_id, name, position)
+SELECT p.id, $3, $4
+FROM projects p
+INNER JOIN organizations o ON o.id = p.organization_id
+WHERE o.slug = $1 AND p.number = $2
+RETURNING
+  id::text,
+  name,
+  position;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(o_slug))
+  |> pog.parameter(pog.int(p_number))
+  |> pog.parameter(pog.text(arg_3))
+  |> pog.parameter(pog.int(arg_4))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `project_column_update` query
+/// defined in `./src/sql/project_column_update.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.7.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type ProjectColumnUpdateRow {
+  ProjectColumnUpdateRow(id: String, name: String, position: Int)
+}
+
+/// Runs the `project_column_update` query
+/// defined in `./src/sql/project_column_update.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.7.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn project_column_update(
+  db: pog.Connection,
+  o_slug: String,
+  p_number: Int,
+  arg_3: Uuid,
+  arg_4: String,
+  position: Int,
+) -> Result(pog.Returned(ProjectColumnUpdateRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use name <- decode.field(1, decode.string)
+    use position <- decode.field(2, decode.int)
+    decode.success(ProjectColumnUpdateRow(id:, name:, position:))
+  }
+
+  "UPDATE project_columns pc
+SET
+  name = $4,
+  position = $5
+FROM projects p
+INNER JOIN organizations o ON o.id = p.organization_id
+WHERE pc.project_id = p.id
+  AND pc.id = $3::uuid
+  AND o.slug = $1
+  AND p.number = $2
+RETURNING
+  pc.id::text,
+  pc.name,
+  pc.position;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(o_slug))
+  |> pog.parameter(pog.int(p_number))
+  |> pog.parameter(pog.text(uuid.to_string(arg_3)))
+  |> pog.parameter(pog.text(arg_4))
+  |> pog.parameter(pog.int(position))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `project_get` query
+/// defined in `./src/sql/project_get.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.7.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type ProjectGetRow {
+  ProjectGetRow(
+    id: String,
+    number: Int,
+    title: String,
+    description: Option(String),
+    state: String,
+    created_by_user_id: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+/// Runs the `project_get` query
+/// defined in `./src/sql/project_get.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.7.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn project_get(
+  db: pog.Connection,
+  o_slug: String,
+  arg_2: Int,
+) -> Result(pog.Returned(ProjectGetRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use number <- decode.field(1, decode.int)
+    use title <- decode.field(2, decode.string)
+    use description <- decode.field(3, decode.optional(decode.string))
+    use state <- decode.field(4, decode.string)
+    use created_by_user_id <- decode.field(5, decode.string)
+    use created_at <- decode.field(6, decode.string)
+    use updated_at <- decode.field(7, decode.string)
+    decode.success(ProjectGetRow(
+      id:,
+      number:,
+      title:,
+      description:,
+      state:,
+      created_by_user_id:,
+      created_at:,
+      updated_at:,
+    ))
+  }
+
+  "SELECT
+  p.id::text,
+  p.number,
+  p.title,
+  p.description,
+  p.state,
+  p.created_by_user_id,
+  p.created_at::text,
+  p.updated_at::text
+FROM projects p
+INNER JOIN organizations o ON o.id = p.organization_id
+WHERE o.slug = $1 AND p.number = $2;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(o_slug))
+  |> pog.parameter(pog.int(arg_2))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `project_insert` query
+/// defined in `./src/sql/project_insert.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.7.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type ProjectInsertRow {
+  ProjectInsertRow(
+    id: String,
+    number: Int,
+    title: String,
+    description: Option(String),
+    state: String,
+    created_by_user_id: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+/// Runs the `project_insert` query
+/// defined in `./src/sql/project_insert.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.7.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn project_insert(
+  db: pog.Connection,
+  o_slug: String,
+  arg_2: String,
+  arg_3: String,
+  arg_4: String,
+) -> Result(pog.Returned(ProjectInsertRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use number <- decode.field(1, decode.int)
+    use title <- decode.field(2, decode.string)
+    use description <- decode.field(3, decode.optional(decode.string))
+    use state <- decode.field(4, decode.string)
+    use created_by_user_id <- decode.field(5, decode.string)
+    use created_at <- decode.field(6, decode.string)
+    use updated_at <- decode.field(7, decode.string)
+    decode.success(ProjectInsertRow(
+      id:,
+      number:,
+      title:,
+      description:,
+      state:,
+      created_by_user_id:,
+      created_at:,
+      updated_at:,
+    ))
+  }
+
+  "INSERT INTO projects (
+  organization_id,
+  number,
+  title,
+  description,
+  created_by_user_id
+)
+SELECT
+  o.id,
+  COALESCE(
+    (SELECT MAX(p.number) FROM projects p WHERE p.organization_id = o.id),
+    0
+  ) + 1,
+  $2,
+  NULLIF($3, ''),
+  $4
+FROM organizations o
+WHERE o.slug = $1
+RETURNING
+  id::text,
+  number,
+  title,
+  description,
+  state,
+  created_by_user_id,
+  created_at::text,
+  updated_at::text;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(o_slug))
+  |> pog.parameter(pog.text(arg_2))
+  |> pog.parameter(pog.text(arg_3))
+  |> pog.parameter(pog.text(arg_4))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `project_item_delete` query
+/// defined in `./src/sql/project_item_delete.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.7.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type ProjectItemDeleteRow {
+  ProjectItemDeleteRow(id: String)
+}
+
+/// Runs the `project_item_delete` query
+/// defined in `./src/sql/project_item_delete.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.7.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn project_item_delete(
+  db: pog.Connection,
+  o_slug: String,
+  p_number: Int,
+  arg_3: Uuid,
+) -> Result(pog.Returned(ProjectItemDeleteRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    decode.success(ProjectItemDeleteRow(id:))
+  }
+
+  "DELETE FROM project_items pi
+USING projects p
+INNER JOIN organizations o ON o.id = p.organization_id
+WHERE pi.project_id = p.id
+  AND pi.id = $3::uuid
+  AND o.slug = $1
+  AND p.number = $2
+RETURNING pi.id::text;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(o_slug))
+  |> pog.parameter(pog.int(p_number))
+  |> pog.parameter(pog.text(uuid.to_string(arg_3)))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `project_item_insert` query
+/// defined in `./src/sql/project_item_insert.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.7.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type ProjectItemInsertRow {
+  ProjectItemInsertRow(
+    id: String,
+    column_id: String,
+    position: Int,
+    item_type: String,
+    repository_id: String,
+    item_number: Int,
+    created_at: String,
+  )
+}
+
+/// Runs the `project_item_insert` query
+/// defined in `./src/sql/project_item_insert.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.7.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn project_item_insert(
+  db: pog.Connection,
+  o_slug: String,
+  p_number: Int,
+  r_name: String,
+  arg_4: String,
+  i_number: Int,
+) -> Result(pog.Returned(ProjectItemInsertRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use column_id <- decode.field(1, decode.string)
+    use position <- decode.field(2, decode.int)
+    use item_type <- decode.field(3, decode.string)
+    use repository_id <- decode.field(4, decode.string)
+    use item_number <- decode.field(5, decode.int)
+    use created_at <- decode.field(6, decode.string)
+    decode.success(ProjectItemInsertRow(
+      id:,
+      column_id:,
+      position:,
+      item_type:,
+      repository_id:,
+      item_number:,
+      created_at:,
+    ))
+  }
+
+  "INSERT INTO project_items (
+  project_id,
+  column_id,
+  position,
+  item_type,
+  repository_id,
+  item_number
+)
+SELECT
+  p.id,
+  (
+    SELECT pc.id
+    FROM project_columns pc
+    WHERE pc.project_id = p.id
+    ORDER BY pc.position
+    LIMIT 1
+  ),
+  COALESCE(
+    (
+      SELECT MAX(pi.position)
+      FROM project_items pi
+      WHERE pi.column_id = (
+        SELECT pc2.id
+        FROM project_columns pc2
+        WHERE pc2.project_id = p.id
+        ORDER BY pc2.position
+        LIMIT 1
+      )
+    ),
+    -1
+  ) + 1,
+  $4::varchar,
+  r.id,
+  $5
+FROM projects p
+INNER JOIN organizations o ON o.id = p.organization_id
+INNER JOIN repositories r ON r.organization_id = o.id AND r.name = $3
+WHERE o.slug = $1
+  AND p.number = $2
+  AND EXISTS (
+    SELECT 1 FROM project_columns pc WHERE pc.project_id = p.id
+  )
+  AND (
+    ($4 = 'issue' AND EXISTS (
+      SELECT 1 FROM issues i WHERE i.repository_id = r.id AND i.number = $5
+    ))
+    OR ($4 = 'merge_request' AND EXISTS (
+      SELECT 1 FROM merge_requests mr
+      WHERE mr.repository_id = r.id AND mr.number = $5
+    ))
+  )
+RETURNING
+  id::text,
+  column_id::text,
+  position,
+  item_type,
+  repository_id::text,
+  item_number,
+  created_at::text;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(o_slug))
+  |> pog.parameter(pog.int(p_number))
+  |> pog.parameter(pog.text(r_name))
+  |> pog.parameter(pog.text(arg_4))
+  |> pog.parameter(pog.int(i_number))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `project_item_move` query
+/// defined in `./src/sql/project_item_move.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.7.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type ProjectItemMoveRow {
+  ProjectItemMoveRow(
+    id: String,
+    column_id: String,
+    position: Int,
+    item_type: String,
+    repository_id: String,
+    item_number: Int,
+    created_at: String,
+  )
+}
+
+/// Runs the `project_item_move` query
+/// defined in `./src/sql/project_item_move.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.7.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn project_item_move(
+  db: pog.Connection,
+  o_slug: String,
+  p_number: Int,
+  arg_3: Uuid,
+  arg_4: Uuid,
+  position: Int,
+) -> Result(pog.Returned(ProjectItemMoveRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use column_id <- decode.field(1, decode.string)
+    use position <- decode.field(2, decode.int)
+    use item_type <- decode.field(3, decode.string)
+    use repository_id <- decode.field(4, decode.string)
+    use item_number <- decode.field(5, decode.int)
+    use created_at <- decode.field(6, decode.string)
+    decode.success(ProjectItemMoveRow(
+      id:,
+      column_id:,
+      position:,
+      item_type:,
+      repository_id:,
+      item_number:,
+      created_at:,
+    ))
+  }
+
+  "UPDATE project_items pi
+SET
+  column_id = $4::uuid,
+  position = $5
+FROM projects p
+INNER JOIN organizations o ON o.id = p.organization_id
+INNER JOIN project_columns pc ON pc.id = $4::uuid AND pc.project_id = p.id
+WHERE pi.id = $3::uuid
+  AND pi.project_id = p.id
+  AND o.slug = $1
+  AND p.number = $2
+RETURNING
+  pi.id::text,
+  pi.column_id::text,
+  pi.position,
+  pi.item_type,
+  pi.repository_id::text,
+  pi.item_number,
+  pi.created_at::text;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(o_slug))
+  |> pog.parameter(pog.int(p_number))
+  |> pog.parameter(pog.text(uuid.to_string(arg_3)))
+  |> pog.parameter(pog.text(uuid.to_string(arg_4)))
+  |> pog.parameter(pog.int(position))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `project_list` query
+/// defined in `./src/sql/project_list.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.7.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type ProjectListRow {
+  ProjectListRow(
+    id: String,
+    number: Int,
+    title: String,
+    description: Option(String),
+    state: String,
+    created_by_user_id: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+/// Runs the `project_list` query
+/// defined in `./src/sql/project_list.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.7.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn project_list(
+  db: pog.Connection,
+  o_slug: String,
+) -> Result(pog.Returned(ProjectListRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use number <- decode.field(1, decode.int)
+    use title <- decode.field(2, decode.string)
+    use description <- decode.field(3, decode.optional(decode.string))
+    use state <- decode.field(4, decode.string)
+    use created_by_user_id <- decode.field(5, decode.string)
+    use created_at <- decode.field(6, decode.string)
+    use updated_at <- decode.field(7, decode.string)
+    decode.success(ProjectListRow(
+      id:,
+      number:,
+      title:,
+      description:,
+      state:,
+      created_by_user_id:,
+      created_at:,
+      updated_at:,
+    ))
+  }
+
+  "SELECT
+  p.id::text,
+  p.number,
+  p.title,
+  p.description,
+  p.state,
+  p.created_by_user_id,
+  p.created_at::text,
+  p.updated_at::text
+FROM projects p
+INNER JOIN organizations o ON o.id = p.organization_id
+WHERE o.slug = $1
+ORDER BY p.number DESC;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(o_slug))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `project_update` query
+/// defined in `./src/sql/project_update.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.7.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type ProjectUpdateRow {
+  ProjectUpdateRow(
+    id: String,
+    number: Int,
+    title: String,
+    description: Option(String),
+    state: String,
+    created_by_user_id: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+/// Runs the `project_update` query
+/// defined in `./src/sql/project_update.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.7.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn project_update(
+  db: pog.Connection,
+  o_slug: String,
+  p_number: Int,
+  arg_3: String,
+  arg_4: String,
+  arg_5: String,
+) -> Result(pog.Returned(ProjectUpdateRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use number <- decode.field(1, decode.int)
+    use title <- decode.field(2, decode.string)
+    use description <- decode.field(3, decode.optional(decode.string))
+    use state <- decode.field(4, decode.string)
+    use created_by_user_id <- decode.field(5, decode.string)
+    use created_at <- decode.field(6, decode.string)
+    use updated_at <- decode.field(7, decode.string)
+    decode.success(ProjectUpdateRow(
+      id:,
+      number:,
+      title:,
+      description:,
+      state:,
+      created_by_user_id:,
+      created_at:,
+      updated_at:,
+    ))
+  }
+
+  "UPDATE projects p
+SET
+  title = $3,
+  description = NULLIF($4, ''),
+  state = $5,
+  updated_at = now()
+FROM organizations o
+WHERE p.organization_id = o.id
+  AND o.slug = $1
+  AND p.number = $2
+RETURNING
+  p.id::text,
+  p.number,
+  p.title,
+  p.description,
+  p.state,
+  p.created_by_user_id,
+  p.created_at::text,
+  p.updated_at::text;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(o_slug))
+  |> pog.parameter(pog.int(p_number))
+  |> pog.parameter(pog.text(arg_3))
+  |> pog.parameter(pog.text(arg_4))
+  |> pog.parameter(pog.text(arg_5))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
 /// A row you get from running the `release_get` query
 /// defined in `./src/sql/release_get.sql`.
 ///
@@ -6642,6 +7451,63 @@ WHERE o.slug = $1 AND r.name = $2;
   |> pog.query
   |> pog.parameter(pog.text(o_slug))
   |> pog.parameter(pog.text(arg_2))
+  |> pog.returning(decoder)
+  |> pog.execute(db)
+}
+
+/// A row you get from running the `repos_get_by_id` query
+/// defined in `./src/sql/repos_get_by_id.sql`.
+///
+/// > 🐿️ This type definition was generated automatically using v4.7.0 of the
+/// > [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub type ReposGetByIdRow {
+  ReposGetByIdRow(
+    id: String,
+    name: String,
+    description: Option(String),
+    disk_path: String,
+    org_slug: String,
+  )
+}
+
+/// Runs the `repos_get_by_id` query
+/// defined in `./src/sql/repos_get_by_id.sql`.
+///
+/// > 🐿️ This function was generated automatically using v4.7.0 of
+/// > the [squirrel package](https://github.com/giacomocavalieri/squirrel).
+///
+pub fn repos_get_by_id(
+  db: pog.Connection,
+  arg_1: Uuid,
+) -> Result(pog.Returned(ReposGetByIdRow), pog.QueryError) {
+  let decoder = {
+    use id <- decode.field(0, decode.string)
+    use name <- decode.field(1, decode.string)
+    use description <- decode.field(2, decode.optional(decode.string))
+    use disk_path <- decode.field(3, decode.string)
+    use org_slug <- decode.field(4, decode.string)
+    decode.success(ReposGetByIdRow(
+      id:,
+      name:,
+      description:,
+      disk_path:,
+      org_slug:,
+    ))
+  }
+
+  "SELECT
+  r.id::text,
+  r.name,
+  r.description,
+  r.disk_path,
+  o.slug AS org_slug
+FROM repositories r
+INNER JOIN organizations o ON o.id = r.organization_id
+WHERE r.id = $1::uuid;
+"
+  |> pog.query
+  |> pog.parameter(pog.text(uuid.to_string(arg_1)))
   |> pog.returning(decoder)
   |> pog.execute(db)
 }

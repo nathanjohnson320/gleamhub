@@ -20,6 +20,13 @@ Gleam-native Git hosting: Clerk sign-in, orgs and repos in the browser, SSH clon
 - Promote or demote members between owner and member (owners only; last owner cannot be demoted or removed)
 - Accept or decline invitations from the user menu
 
+### Projects
+
+- Org-scoped kanban boards at **Projects** in the organization nav
+- Create projects and view a board with default columns (Todo, In progress, Done)
+- Add issues and merge requests from any repository in the organization
+- Move cards between columns or remove them from the board
+
 ### Repositories
 
 - Create, browse, and delete repositories (delete: owners only)

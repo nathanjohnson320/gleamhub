@@ -7,6 +7,8 @@ import lustre/event
 
 pub const page = "mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-8"
 
+pub const page_wide = page <> " !max-w-7xl"
+
 pub const page_title = "comic-page-title"
 
 pub const page_title_sm = "comic-page-title comic-page-title-sm"

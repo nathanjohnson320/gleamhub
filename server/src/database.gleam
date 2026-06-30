@@ -89,6 +89,59 @@ pub type MilestoneError {
   InvalidMilestone
 }
 
+pub type ProjectRow {
+  ProjectRow(
+    id: String,
+    number: Int,
+    title: String,
+    description: Option(String),
+    state: String,
+    created_by_user_id: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+pub type ProjectColumnRow {
+  ProjectColumnRow(id: String, name: String, position: Int)
+}
+
+pub type ProjectItemRow {
+  ProjectItemRow(
+    id: String,
+    column_id: String,
+    position: Int,
+    item_type: String,
+    item_number: Int,
+    repo_name: String,
+    org_slug: String,
+    title: String,
+    state: String,
+    created_at: String,
+  )
+}
+
+pub type ProjectBoardColumnRow {
+  ProjectBoardColumnRow(
+    id: String,
+    name: String,
+    position: Int,
+    items: List(ProjectItemRow),
+  )
+}
+
+pub type ProjectBoardRow {
+  ProjectBoardRow(project: ProjectRow, columns: List(ProjectBoardColumnRow))
+}
+
+pub type ProjectError {
+  InvalidProjectTitle
+  ProjectNotFound
+  InvalidProjectColumn
+  InvalidProjectItem
+  InvalidItemType
+}
+
 pub type LabelError {
   InvalidLabelName
   InvalidLabelColor
@@ -4059,6 +4112,582 @@ fn issue_from_set_milestone_row(row: sql.IssueSetMilestoneRow) -> IssueRow {
     row.created_at,
     row.updated_at,
   )
+}
+
+pub fn list_projects(
+  db: pog.Connection,
+  org_slug: String,
+) -> Result(List(ProjectRow), pog.QueryError) {
+  sql.project_list(db, org_slug)
+  |> result_map_rows
+  |> result.map(list.map(_, project_from_list_row))
+}
+
+pub fn get_project(
+  db: pog.Connection,
+  org_slug: String,
+  number: Int,
+) -> Result(Option(ProjectRow), pog.QueryError) {
+  sql.project_get(db, org_slug, number)
+  |> result_map_optional_row
+  |> result.map(option.map(_, project_from_get_row))
+}
+
+pub fn insert_project(
+  db: pog.Connection,
+  org_slug: String,
+  title: String,
+  description: Option(String),
+  created_by_user_id: String,
+) -> Result(ProjectRow, ProjectError) {
+  case normalize_project_title(title) {
+    Error(_) -> Error(InvalidProjectTitle)
+    Ok(normalized_title) ->
+      case
+        pog.transaction(db, fn(db) {
+          insert_project_queries(
+            db,
+            org_slug,
+            normalized_title,
+            description,
+            created_by_user_id,
+          )
+        })
+      {
+        Ok(project) -> Ok(project)
+        Error(pog.TransactionRolledBack(_)) -> Error(InvalidProjectTitle)
+        Error(pog.TransactionQueryError(_)) -> Error(InvalidProjectTitle)
+      }
+  }
+}
+
+pub fn update_project(
+  db: pog.Connection,
+  org_slug: String,
+  number: Int,
+  title: String,
+  description: Option(String),
+  state: String,
+) -> Result(ProjectRow, ProjectError) {
+  case normalize_project_title(title) {
+    Error(_) -> Error(InvalidProjectTitle)
+    Ok(normalized_title) ->
+      case
+        sql.project_update(
+          db,
+          org_slug,
+          number,
+          normalized_title,
+          nullable_text(description),
+          state,
+        )
+        |> result_map_first_row
+      {
+        Ok(row) -> Ok(project_from_update_row(row))
+        Error(_) -> Error(ProjectNotFound)
+      }
+  }
+}
+
+pub fn get_project_board(
+  db: pog.Connection,
+  org_slug: String,
+  number: Int,
+) -> Result(Option(ProjectBoardRow), pog.QueryError) {
+  case get_project(db, org_slug, number) {
+    Error(e) -> Error(e)
+    Ok(option.None) -> Ok(option.None)
+    Ok(option.Some(project)) ->
+      case sql.project_board(db, org_slug, number) |> result_map_rows {
+        Error(e) -> Error(e)
+        Ok(rows) -> Ok(option.Some(board_from_rows(project, rows)))
+      }
+  }
+}
+
+pub fn insert_project_column(
+  db: pog.Connection,
+  org_slug: String,
+  project_number: Int,
+  name: String,
+  position: Int,
+) -> Result(ProjectColumnRow, ProjectError) {
+  case normalize_project_column_name(name) {
+    Error(_) -> Error(InvalidProjectColumn)
+    Ok(normalized_name) ->
+      case
+        sql.project_column_insert(
+          db,
+          org_slug,
+          project_number,
+          normalized_name,
+          position,
+        )
+        |> result_map_first_row
+      {
+        Ok(row) -> Ok(project_column_from_insert_row(row))
+        Error(_) -> Error(InvalidProjectColumn)
+      }
+  }
+}
+
+pub fn update_project_column(
+  db: pog.Connection,
+  org_slug: String,
+  project_number: Int,
+  column_id: String,
+  name: String,
+  position: Int,
+) -> Result(ProjectColumnRow, ProjectError) {
+  case
+    parse_project_id(column_id),
+    normalize_project_column_name(name)
+  {
+    Error(e), _ | _, Error(e) -> Error(e)
+    Ok(column_uuid), Ok(normalized_name) ->
+      case
+        sql.project_column_update(
+          db,
+          org_slug,
+          project_number,
+          column_uuid,
+          normalized_name,
+          position,
+        )
+        |> result_map_first_row
+      {
+        Ok(row) -> Ok(project_column_from_update_row(row))
+        Error(_) -> Error(InvalidProjectColumn)
+      }
+  }
+}
+
+pub fn delete_project_column(
+  db: pog.Connection,
+  org_slug: String,
+  project_number: Int,
+  column_id: String,
+) -> Result(Nil, ProjectError) {
+  case parse_project_id(column_id) {
+    Error(e) -> Error(e)
+    Ok(column_uuid) ->
+      case
+        sql.project_column_delete(db, org_slug, project_number, column_uuid)
+        |> result_map_first_row
+      {
+        Ok(_row) -> Ok(Nil)
+        Error(_) -> Error(InvalidProjectColumn)
+      }
+  }
+}
+
+pub fn insert_project_item(
+  db: pog.Connection,
+  org_slug: String,
+  project_number: Int,
+  repo_name: String,
+  item_type: String,
+  item_number: Int,
+) -> Result(ProjectItemRow, ProjectError) {
+  case normalize_project_item_type(item_type) {
+    Error(e) -> Error(e)
+    Ok(normalized_type) ->
+      case
+        sql.project_item_insert(
+          db,
+          org_slug,
+          project_number,
+          repo_name,
+          normalized_type,
+          item_number,
+        )
+        |> result_map_first_row
+      {
+        Ok(row) ->
+          hydrate_project_item(db, org_slug, repo_name, row)
+        Error(_) -> Error(InvalidProjectItem)
+      }
+  }
+}
+
+pub fn move_project_item(
+  db: pog.Connection,
+  org_slug: String,
+  project_number: Int,
+  item_id: String,
+  column_id: String,
+  position: Int,
+) -> Result(ProjectItemRow, ProjectError) {
+  case parse_project_id(item_id), parse_project_id(column_id) {
+    Error(e), _ | _, Error(e) -> Error(e)
+    Ok(item_uuid), Ok(column_uuid) ->
+      case
+        sql.project_item_move(
+          db,
+          org_slug,
+          project_number,
+          item_uuid,
+          column_uuid,
+          position,
+        )
+        |> result_map_first_row
+      {
+        Ok(row) -> hydrate_project_item_by_id(db, org_slug, row)
+        Error(_) -> Error(InvalidProjectItem)
+      }
+  }
+}
+
+pub fn delete_project_item(
+  db: pog.Connection,
+  org_slug: String,
+  project_number: Int,
+  item_id: String,
+) -> Result(Nil, ProjectError) {
+  case parse_project_id(item_id) {
+    Error(e) -> Error(e)
+    Ok(item_uuid) ->
+      case
+        sql.project_item_delete(db, org_slug, project_number, item_uuid)
+        |> result_map_first_row
+      {
+        Ok(_row) -> Ok(Nil)
+        Error(_) -> Error(InvalidProjectItem)
+      }
+  }
+}
+
+fn insert_project_queries(
+  db: pog.Connection,
+  org_slug: String,
+  title: String,
+  description: Option(String),
+  created_by_user_id: String,
+) -> Result(ProjectRow, pog.QueryError) {
+  case
+    sql.project_insert(
+      db,
+      org_slug,
+      title,
+      nullable_text(description),
+      created_by_user_id,
+    )
+  {
+    Ok(returned) ->
+      case returned.rows {
+        [row] ->
+          case insert_default_project_columns(db, org_slug, row.number) {
+            Ok(Nil) -> Ok(project_from_insert_row(row))
+            Error(e) -> Error(e)
+          }
+        _ -> Error(pog.ConstraintViolated("no project row", "projects", ""))
+      }
+    Error(e) -> Error(e)
+  }
+}
+
+fn insert_default_project_columns(
+  db: pog.Connection,
+  org_slug: String,
+  project_number: Int,
+) -> Result(Nil, pog.QueryError) {
+  list.fold(
+    [#("Todo", 0), #("In Progress", 1), #("Done", 2)],
+    Ok(Nil),
+    fn(acc, column) {
+      case acc {
+        Error(e) -> Error(e)
+        Ok(Nil) -> {
+          let #(name, position) = column
+          case
+            sql.project_column_insert(db, org_slug, project_number, name, position)
+            |> result_map_first_row
+          {
+            Ok(_row) -> Ok(Nil)
+            Error(e) -> Error(e)
+          }
+        }
+      }
+    },
+  )
+}
+
+fn board_from_rows(
+  project: ProjectRow,
+  rows: List(sql.ProjectBoardRow),
+) -> ProjectBoardRow {
+  let columns =
+    list.fold(rows, [], fn(acc, row) {
+      case list.find(acc, fn(column: ProjectBoardColumnRow) {
+        column.id == row.column_id
+      }) {
+        Ok(_) ->
+          list.map(acc, fn(column: ProjectBoardColumnRow) {
+            case column.id == row.column_id, row.item_id {
+              True, "" -> column
+              True, _ -> ProjectBoardColumnRow(
+                ..column,
+                items: list.append(column.items, [
+                  project_item_from_board_row(row),
+                ]),
+              )
+              False, _ -> column
+            }
+          })
+        Error(_) -> {
+          let items = case row.item_id {
+            "" -> []
+            _ -> [project_item_from_board_row(row)]
+          }
+          list.append(acc, [
+            ProjectBoardColumnRow(
+              id: row.column_id,
+              name: row.column_name,
+              position: row.column_position,
+              items:,
+            ),
+          ])
+        }
+      }
+    })
+  ProjectBoardRow(project:, columns:)
+}
+
+fn hydrate_project_item(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  row: sql.ProjectItemInsertRow,
+) -> Result(ProjectItemRow, ProjectError) {
+  case item_card_fields(db, org_slug, repo_name, row.item_type, row.item_number) {
+    Error(e) -> Error(e)
+    Ok(#(title, state)) ->
+      Ok(ProjectItemRow(
+        id: row.id,
+        column_id: row.column_id,
+        position: row.position,
+        item_type: row.item_type,
+        item_number: row.item_number,
+        repo_name:,
+        org_slug:,
+        title:,
+        state:,
+        created_at: row.created_at,
+      ))
+  }
+}
+
+fn hydrate_project_item_by_id(
+  db: pog.Connection,
+  org_slug: String,
+  row: sql.ProjectItemMoveRow,
+) -> Result(ProjectItemRow, ProjectError) {
+  case get_repo_by_id(db, row.repository_id) {
+    Error(_) -> Error(InvalidProjectItem)
+    Ok(option.None) -> Error(InvalidProjectItem)
+    Ok(option.Some(repo)) ->
+      case
+        item_card_fields(db, org_slug, repo.name, row.item_type, row.item_number)
+      {
+        Error(e) -> Error(e)
+        Ok(#(title, state)) ->
+          Ok(ProjectItemRow(
+            id: row.id,
+            column_id: row.column_id,
+            position: row.position,
+            item_type: row.item_type,
+            item_number: row.item_number,
+            repo_name: repo.name,
+            org_slug: repo.org_slug,
+            title:,
+            state:,
+            created_at: row.created_at,
+          ))
+      }
+  }
+}
+
+fn get_repo_by_id(
+  db: pog.Connection,
+  repository_id: String,
+) -> Result(Option(RepoRow), pog.QueryError) {
+  case uuid.from_string(repository_id) {
+    Error(_) -> Ok(option.None)
+    Ok(repo_uuid) ->
+      sql.repos_get_by_id(db, repo_uuid)
+      |> result_map_optional_row
+      |> result.map(option.map(_, repo_from_get_by_id_row))
+  }
+}
+
+fn repo_from_get_by_id_row(row: sql.ReposGetByIdRow) -> RepoRow {
+  RepoRow(
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    disk_path: row.disk_path,
+    org_slug: row.org_slug,
+  )
+}
+
+fn item_card_fields(
+  db: pog.Connection,
+  org_slug: String,
+  repo_name: String,
+  item_type: String,
+  item_number: Int,
+) -> Result(#(String, String), ProjectError) {
+  case item_type {
+    "issue" ->
+      case get_issue(db, org_slug, repo_name, item_number) {
+        Ok(option.Some(issue)) -> Ok(#(issue.title, issue.state))
+        Ok(option.None) -> Error(InvalidProjectItem)
+        Error(_) -> Error(InvalidProjectItem)
+      }
+    "merge_request" ->
+      case get_merge_request(db, org_slug, repo_name, item_number) {
+        Ok(option.Some(mr)) -> Ok(#(mr.title, mr.state))
+        Ok(option.None) -> Error(InvalidProjectItem)
+        Error(_) -> Error(InvalidProjectItem)
+      }
+    _ -> Error(InvalidItemType)
+  }
+}
+
+fn project_item_from_board_row(row: sql.ProjectBoardRow) -> ProjectItemRow {
+  let assert option.Some(item_position) = row.item_position
+  let assert option.Some(item_type) = row.item_type
+  let assert option.Some(item_number) = row.item_number
+  let assert option.Some(repo_name) = row.repo_name
+  ProjectItemRow(
+    id: row.item_id,
+    column_id: row.column_id,
+    position: item_position,
+    item_type:,
+    item_number:,
+    repo_name:,
+    org_slug: row.org_slug,
+    title: row.item_title,
+    state: row.item_state,
+    created_at: row.item_created_at,
+  )
+}
+
+fn parse_project_id(id: String) -> Result(uuid.Uuid, ProjectError) {
+  case uuid.from_string(id) {
+    Ok(parsed) -> Ok(parsed)
+    Error(_) -> Error(InvalidProjectItem)
+  }
+}
+
+fn normalize_project_title(title: String) -> Result(String, Nil) {
+  let trimmed = string.trim(title)
+  case trimmed {
+    "" -> Error(Nil)
+    _ -> Ok(trimmed)
+  }
+}
+
+fn normalize_project_column_name(name: String) -> Result(String, ProjectError) {
+  let trimmed = string.trim(name)
+  case trimmed {
+    "" -> Error(InvalidProjectColumn)
+    _ -> Ok(trimmed)
+  }
+}
+
+fn normalize_project_item_type(item_type: String) -> Result(String, ProjectError) {
+  case string.lowercase(string.trim(item_type)) {
+    "issue" -> Ok("issue")
+    "merge_request" -> Ok("merge_request")
+    _ -> Error(InvalidItemType)
+  }
+}
+
+fn project_from_list_row(row: sql.ProjectListRow) -> ProjectRow {
+  project_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.state,
+    row.created_by_user_id,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn project_from_get_row(row: sql.ProjectGetRow) -> ProjectRow {
+  project_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.state,
+    row.created_by_user_id,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn project_from_insert_row(row: sql.ProjectInsertRow) -> ProjectRow {
+  project_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.state,
+    row.created_by_user_id,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn project_from_update_row(row: sql.ProjectUpdateRow) -> ProjectRow {
+  project_row(
+    row.id,
+    row.number,
+    row.title,
+    row.description,
+    row.state,
+    row.created_by_user_id,
+    row.created_at,
+    row.updated_at,
+  )
+}
+
+fn project_row(
+  id: String,
+  number: Int,
+  title: String,
+  description: Option(String),
+  state: String,
+  created_by_user_id: String,
+  created_at: String,
+  updated_at: String,
+) -> ProjectRow {
+  ProjectRow(
+    id:,
+    number:,
+    title:,
+    description:,
+    state:,
+    created_by_user_id:,
+    created_at:,
+    updated_at:,
+  )
+}
+
+fn project_column_from_insert_row(
+  row: sql.ProjectColumnInsertRow,
+) -> ProjectColumnRow {
+  ProjectColumnRow(id: row.id, name: row.name, position: row.position)
+}
+
+fn project_column_from_update_row(
+  row: sql.ProjectColumnUpdateRow,
+) -> ProjectColumnRow {
+  ProjectColumnRow(id: row.id, name: row.name, position: row.position)
 }
 
 fn optional_date(value: String) -> Option(String) {

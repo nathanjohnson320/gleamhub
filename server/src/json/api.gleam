@@ -4,8 +4,9 @@ import database.{
   type LinkedMergeRequestRow, type MergeRequestCommentRow,
   type MergeRequestReviewRow, type MergeRequestRow, type MilestoneRow,
   type NotificationRow, type OrgInvitationRow, type OrgMemberRow, type OrgRow,
-  type PipelineRunRow, type ReleaseRow, type RepoRow, type UserRow,
-  type UserStatsRow,
+  type PipelineRunRow, type ProjectBoardColumnRow, type ProjectBoardRow,
+  type ProjectColumnRow, type ProjectItemRow, type ProjectRow, type ReleaseRow,
+  type RepoRow, type UserRow, type UserStatsRow,
 }
 import git/exec.{
   type BlobContent, type CommitEntry, type ConflictFile, type ConflictFileSide,
@@ -638,6 +639,67 @@ pub fn milestones_json(milestones: List(MilestoneRow)) -> json.Json {
     #(
       "milestones",
       json.array(milestones, of: milestone_json),
+    ),
+  ])
+}
+
+pub fn project_json(project: ProjectRow) -> json.Json {
+  json.object([
+    #("id", json.string(project.id)),
+    #("number", json.int(project.number)),
+    #("title", json.string(project.title)),
+    #("description", optional_string(project.description)),
+    #("state", json.string(project.state)),
+    #("created_by_user_id", json.string(project.created_by_user_id)),
+    #("created_at", json.string(project.created_at)),
+    #("updated_at", json.string(project.updated_at)),
+  ])
+}
+
+pub fn projects_json(projects: List(ProjectRow)) -> json.Json {
+  json.object([
+    #("projects", json.array(projects, of: project_json)),
+  ])
+}
+
+pub fn project_column_json(column: ProjectColumnRow) -> json.Json {
+  json.object([
+    #("id", json.string(column.id)),
+    #("name", json.string(column.name)),
+    #("position", json.int(column.position)),
+  ])
+}
+
+pub fn project_item_json(item: ProjectItemRow) -> json.Json {
+  json.object([
+    #("id", json.string(item.id)),
+    #("column_id", json.string(item.column_id)),
+    #("position", json.int(item.position)),
+    #("item_type", json.string(item.item_type)),
+    #("number", json.int(item.item_number)),
+    #("repo_name", json.string(item.repo_name)),
+    #("org_slug", json.string(item.org_slug)),
+    #("title", json.string(item.title)),
+    #("state", json.string(item.state)),
+    #("created_at", json.string(item.created_at)),
+  ])
+}
+
+fn project_board_column_json(column: ProjectBoardColumnRow) -> json.Json {
+  json.object([
+    #("id", json.string(column.id)),
+    #("name", json.string(column.name)),
+    #("position", json.int(column.position)),
+    #("items", json.array(column.items, of: project_item_json)),
+  ])
+}
+
+pub fn project_board_json(board: ProjectBoardRow) -> json.Json {
+  json.object([
+    #("project", project_json(board.project)),
+    #(
+      "columns",
+      json.array(board.columns, of: project_board_column_json),
     ),
   ])
 }

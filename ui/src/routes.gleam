@@ -28,6 +28,9 @@ pub type Route {
   MySpace(MyTab)
   OrgRepos(String)
   OrgMembers(String)
+  ProjectList(String)
+  ProjectNew(String)
+  ProjectDetail(String, Int)
   RepoView(
     ViewMode,
     String,
@@ -121,6 +124,13 @@ fn from_segments(
     ["settings", "account"] -> Account
     ["orgs", slug] -> OrgRepos(slug)
     ["orgs", slug, "members"] -> OrgMembers(slug)
+    ["orgs", slug, "projects"] -> ProjectList(slug)
+    ["orgs", slug, "projects", "new"] -> ProjectNew(slug)
+    ["orgs", slug, "projects", num] ->
+      case int.parse(num) {
+        Ok(n) -> ProjectDetail(slug, n)
+        Error(_) -> NotFound
+      }
     ["orgs", "repos", repo] -> RepoMissingOrg(repo)
     ["orgs", org, "repos", repo] ->
       RepoView(Home, org, repo, "", "", line_range: option.None)
@@ -313,6 +323,18 @@ pub fn org_repos_path(slug: String) -> String {
 
 pub fn org_members_path(slug: String) -> String {
   org_repos_path(slug) <> "/members"
+}
+
+pub fn project_list_path(slug: String) -> String {
+  org_repos_path(slug) <> "/projects"
+}
+
+pub fn project_new_path(slug: String) -> String {
+  project_list_path(slug) <> "/new"
+}
+
+pub fn project_detail_path(slug: String, num: Int) -> String {
+  project_list_path(slug) <> "/" <> int.to_string(num)
 }
 
 pub fn repo_home_path(org: String, repo: String) -> String {

@@ -663,6 +663,43 @@ pub type Milestone {
   )
 }
 
+pub type Project {
+  Project(
+    id: String,
+    number: Int,
+    title: String,
+    description: option.Option(String),
+    state: String,
+    created_at: String,
+    updated_at: String,
+  )
+}
+
+pub type ProjectItem {
+  ProjectItem(
+    id: String,
+    item_type: String,
+    repo_name: String,
+    org_slug: String,
+    number: Int,
+    title: String,
+    state: String,
+  )
+}
+
+pub type ProjectColumn {
+  ProjectColumn(
+    id: String,
+    name: String,
+    position: Int,
+    items: List(ProjectItem),
+  )
+}
+
+pub type ProjectBoard {
+  ProjectBoard(project: Project, columns: List(ProjectColumn))
+}
+
 pub type Issue {
   Issue(
     id: String,
@@ -1126,6 +1163,67 @@ pub fn milestones_decoder() -> decode.Decoder(List(Milestone)) {
   decode.success(milestones)
 }
 
+pub fn project_decoder() -> decode.Decoder(Project) {
+  use id <- decode.field("id", decode.string)
+  use number <- decode.field("number", decode.int)
+  use title <- decode.field("title", decode.string)
+  use description <- decode.field("description", decode.optional(decode.string))
+  use state <- decode.field("state", decode.string)
+  use created_at <- decode.field("created_at", decode.string)
+  use updated_at <- decode.field("updated_at", decode.string)
+  decode.success(Project(
+    id:,
+    number:,
+    title:,
+    description:,
+    state:,
+    created_at:,
+    updated_at:,
+  ))
+}
+
+pub fn projects_decoder() -> decode.Decoder(List(Project)) {
+  use projects <- decode.field("projects", decode.list(project_decoder()))
+  decode.success(projects)
+}
+
+pub fn project_item_decoder() -> decode.Decoder(ProjectItem) {
+  use id <- decode.field("id", decode.string)
+  use item_type <- decode.field("item_type", decode.string)
+  use repo_name <- decode.field("repo_name", decode.string)
+  use org_slug <- decode.field("org_slug", decode.string)
+  use number <- decode.field("number", decode.int)
+  use title <- decode.field("title", decode.string)
+  use state <- decode.field("state", decode.string)
+  decode.success(ProjectItem(
+    id:,
+    item_type:,
+    repo_name:,
+    org_slug:,
+    number:,
+    title:,
+    state:,
+  ))
+}
+
+pub fn project_column_decoder() -> decode.Decoder(ProjectColumn) {
+  use id <- decode.field("id", decode.string)
+  use name <- decode.field("name", decode.string)
+  use position <- decode.field("position", decode.int)
+  use items <- decode.optional_field(
+    "items",
+    [],
+    decode.list(project_item_decoder()),
+  )
+  decode.success(ProjectColumn(id:, name:, position:, items:))
+}
+
+pub fn project_board_decoder() -> decode.Decoder(ProjectBoard) {
+  use project <- decode.field("project", project_decoder())
+  use columns <- decode.field("columns", decode.list(project_column_decoder()))
+  decode.success(ProjectBoard(project:, columns:))
+}
+
 pub fn issue_decoder() -> decode.Decoder(Issue) {
   use id <- decode.field("id", decode.string)
   use number <- decode.field("number", decode.int)
@@ -1317,6 +1415,73 @@ pub fn update_milestone_body(
       option.None -> json.null()
     }),
   ])
+}
+
+pub fn create_project_body(
+  title: String,
+  description: option.Option(String),
+) -> json.Json {
+  json.object([
+    #("title", json.string(title)),
+    #("description", case description {
+      option.Some(d) -> json.string(d)
+      option.None -> json.null()
+    }),
+  ])
+}
+
+pub fn update_project_body(
+  title: option.Option(String),
+  description: option.Option(String),
+  state: option.Option(String),
+) -> json.Json {
+  let title_field = case title {
+    option.Some(t) -> [#("title", json.string(t))]
+    option.None -> []
+  }
+  let description_field = case description {
+    option.Some(d) -> [#("description", json.string(d))]
+    option.None -> []
+  }
+  let state_field = case state {
+    option.Some(s) -> [#("state", json.string(s))]
+    option.None -> []
+  }
+  json.object(list.append(list.append(title_field, description_field), state_field))
+}
+
+pub fn add_project_item_body(
+  item_type: String,
+  repo_name: String,
+  number: Int,
+) -> json.Json {
+  json.object([
+    #("item_type", json.string(item_type)),
+    #("repo_name", json.string(repo_name)),
+    #("number", json.int(number)),
+  ])
+}
+
+pub fn move_project_item_body(column_id: String, position: Int) -> json.Json {
+  json.object([
+    #("column_id", json.string(column_id)),
+    #("position", json.int(position)),
+  ])
+}
+
+pub fn update_project_column_body(
+  name: option.Option(String),
+  position: option.Option(Int),
+) -> json.Json {
+  let name_field = case name {
+    option.Some(n) -> [#("name", json.string(n))]
+    option.None -> []
+  }
+  let position_field = case position {
+    option.Some(p) -> [#("position", json.int(p))]
+    option.None -> []
+  }
+  json.object(list.append(name_field, position_field))
 }
 
 pub fn update_issue_milestone_body(milestone_id: option.Option(String)) -> json.Json {

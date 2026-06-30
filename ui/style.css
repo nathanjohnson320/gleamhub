@@ -1459,6 +1459,66 @@
   @apply overflow-hidden;
 }
 
+.project-board-shell {
+  @apply overflow-hidden;
+}
+
+.project-board-toolbar {
+  @apply flex items-center justify-end gap-3 border-b border-gh-ink/10 bg-gh-banana-soft/40 px-4 py-3 sm:px-5;
+}
+
+.project-board-columns {
+  @apply flex gap-3 overflow-x-auto bg-gh-banana-soft/20 p-4 sm:p-5;
+}
+
+.project-board-column {
+  @apply flex min-w-[15rem] flex-1 flex-col gap-2 p-3;
+}
+
+.project-board-column-header {
+  @apply flex items-baseline justify-between gap-2 px-1 pb-2;
+}
+
+.project-board-column-title {
+  @apply text-sm font-semibold capitalize text-gh-ink;
+}
+
+.project-board-column-count {
+  @apply shrink-0 text-xs font-medium text-gh-muted;
+}
+
+.project-board-cards {
+  @apply flex min-h-[3rem] flex-col gap-2;
+}
+
+.project-board-card {
+  @apply !flex-col !items-stretch;
+}
+
+.project-board-card-meta {
+  @apply flex flex-wrap items-center gap-1.5 px-1;
+}
+
+.project-board-card-repo {
+  @apply font-mono text-[0.65rem] font-medium text-gh-muted;
+}
+
+.project-board-card-type {
+  @apply text-[0.65rem] font-semibold uppercase tracking-wide text-gh-muted;
+}
+
+.project-board-card-actions {
+  @apply flex items-center gap-2 border-t border-gh-ink/5 px-1 pt-2;
+}
+
+.project-board-card-move {
+  @apply min-w-0 flex-1 px-2 py-1 text-xs;
+}
+
+.project-board-card-remove {
+  @apply shrink-0 text-xs font-medium text-gh-muted underline-offset-2 transition hover:text-gh-danger hover:underline disabled:opacity-50;
+}
+
 .mr-list-toolbar {
   @apply flex flex-col gap-3 border-b border-gh-ink/10 bg-gh-banana-soft/50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6;
 }

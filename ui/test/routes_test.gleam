@@ -3,10 +3,12 @@ import gleam/uri
 import gleeunit
 import routes.{
   Blob, Changes, Checks, Conversation, Home, MrDetail, MrList, MrNew,
-  MyNotifications, MyOverview, OrgRepos, ReleaseDetail, ReleaseList, ReleaseNew,
+  MyNotifications, MyOverview, OrgRepos, ProjectDetail, ProjectList, ProjectNew,
+  ReleaseDetail, ReleaseList, ReleaseNew,
   RepoMissingOrg, RepoSettings, RepoView, Tree, from_pathname, from_uri,
   mr_changes_line_path, mr_detail_path, mr_detail_tab_path, mr_list_path,
-  mr_new_path, release_detail_path, release_list_path, release_new_path,
+  mr_new_path, project_detail_path, project_list_path, project_new_path,
+  release_detail_path, release_list_path, release_new_path,
   repo_blob_api_suffix, repo_blob_line_path, repo_blob_line_range_path,
   repo_blob_path, repo_raw_browser_path,
 }
@@ -189,4 +191,13 @@ pub fn mr_diff_line_path_test() {
     == "/orgs/acme/repos/demo/merge-requests/3/changes/README.md?line=29#diff-line-README.md-L29"
   assert mr_changes_line_path("acme", "demo", 3, "src/foo bar.gleam", 10)
     == "/orgs/acme/repos/demo/merge-requests/3/changes/src/foo%20bar.gleam?line=10#diff-line-src%2Ffoo%20bar.gleam-L10"
+}
+
+pub fn project_pathname_test() {
+  assert from_pathname("/orgs/acme/projects") == ProjectList("acme")
+  assert from_pathname("/orgs/acme/projects/new") == ProjectNew("acme")
+  assert from_pathname("/orgs/acme/projects/3") == ProjectDetail("acme", 3)
+  assert project_list_path("acme") == "/orgs/acme/projects"
+  assert project_new_path("acme") == "/orgs/acme/projects/new"
+  assert project_detail_path("acme", 3) == "/orgs/acme/projects/3"
 }

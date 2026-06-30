@@ -14,6 +14,7 @@ import http/member_routes
 import http/merge_request_routes
 import http/milestone_routes
 import http/notification_routes
+import http/project_routes
 import http/release_routes
 import http/web.{type Context}
 import simplifile
@@ -25,6 +26,7 @@ fn is_ui_route(segments: List(String)) -> Bool {
     ["orgs"] -> True
     ["orgs", _] -> True
     ["orgs", _, "members"] -> True
+    ["orgs", _, "projects", ..] -> True
     ["orgs", _, "repos", _, ..] -> True
     ["keys"] | ["settings", ..] -> True
     ["me"] -> True
@@ -141,6 +143,25 @@ pub fn handle_request(req: Request, ctx: Context) -> Response {
             }
             ["api", "orgs", slug, "invitations", invitation_id] ->
               member_routes.cancel_invitation(req, ctx, slug, invitation_id)
+            ["api", "orgs", slug, "projects"] -> {
+              case req.method {
+                http.Get -> project_routes.list_org_projects(req, ctx, slug)
+                http.Post -> project_routes.create_org_project(req, ctx, slug)
+                _ -> wisp.method_not_allowed([http.Get, http.Post])
+              }
+            }
+            ["api", "orgs", slug, "projects", num, "board"] ->
+              project_routes.get_org_project_board(req, ctx, slug, num)
+            ["api", "orgs", slug, "projects", num, "items"] ->
+              project_routes.create_org_project_item(req, ctx, slug, num)
+            ["api", "orgs", slug, "projects", num, "items", item_id] ->
+              project_routes.project_item_by_id(req, ctx, slug, num, item_id)
+            ["api", "orgs", slug, "projects", num, "columns"] ->
+              project_routes.create_org_project_column(req, ctx, slug, num)
+            ["api", "orgs", slug, "projects", num, "columns", column_id] ->
+              project_routes.project_column_by_id(req, ctx, slug, num, column_id)
+            ["api", "orgs", slug, "projects", num] ->
+              project_routes.project_by_number(req, ctx, slug, num)
             ["api", "orgs", slug, "repos"] -> {
               case req.method {
                 http.Get -> api_routes.list_repos(req, ctx, slug)
